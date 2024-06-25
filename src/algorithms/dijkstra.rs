@@ -127,7 +127,7 @@ where
             let path_opt = get_path_from_parents(&parents, start, position);
             return DijkstraSearchResults {
                 ops_used: max_ops - remaining_ops,
-                cost: cost,
+                cost,
                 incomplete: path_opt.is_none(),
                 path: path_opt.unwrap_or_else(|| Vec::new()),
             };
