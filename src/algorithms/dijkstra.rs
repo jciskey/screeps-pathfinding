@@ -12,7 +12,7 @@ pub trait DijkstraNode: Eq + Hash + Copy + Ord {}
 impl<T> DijkstraNode for T where T: Eq + Hash + Copy + Ord {}
 
 #[derive(Debug)]
-struct DijkstraSearchResults<T> where
+pub struct DijkstraSearchResults<T> where
   T: DijkstraNode {
     ops_used: u32,
     cost: u32,
