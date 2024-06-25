@@ -13,6 +13,7 @@ include = [
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/jciskey/screeps-pathfinding/"
+documentation = "https://docs.rs/screeps-pathfinding/"
 description = "Pathfinding algorithms for Screeps: World in native Rust"
 
 [lib]
