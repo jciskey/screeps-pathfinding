@@ -2,5 +2,27 @@
 name = "screeps-pathfinding"
 version = "0.1.0"
 edition = "2021"
+authors = ["Joe Ciskey"]
+include = [
+    "Cargo.toml",
+    "src/**/*",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE",
+]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/jciskey/screeps-pathfinding/"
+description = "Pathfinding algorithms for Screeps: World in native Rust"
+
+[lib]
+name = "screeps_pathfinding"
+
+[package.metadata.docs.rs]
+all-features = true
 
 [dependencies]
+screeps-game-api = "0.21"
+
+[features]
+default = []
