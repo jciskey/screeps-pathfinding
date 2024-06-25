@@ -12,12 +12,14 @@ pub trait DijkstraNode: Eq + Hash + Copy + Ord {}
 impl<T> DijkstraNode for T where T: Eq + Hash + Copy + Ord {}
 
 #[derive(Debug)]
-pub struct DijkstraSearchResults<T> where
-  T: DijkstraNode {
+pub struct DijkstraSearchResults<T>
+where
+    T: DijkstraNode,
+{
     ops_used: u32,
     cost: u32,
     incomplete: bool,
-    path: Vec<T>
+    path: Vec<T>,
 }
 
 impl<T: DijkstraNode> DijkstraSearchResults<T> {
@@ -39,8 +41,10 @@ impl<T: DijkstraNode> DijkstraSearchResults<T> {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
-struct State<T> where
-  T: Ord {
+struct State<T>
+where
+    T: Ord,
+{
     cost: u32,
     position: T,
 }
@@ -48,20 +52,26 @@ struct State<T> where
 // The priority queue depends on `Ord`.
 // Explicitly implement the trait so the queue becomes a min-heap
 // instead of a max-heap.
-impl<T> Ord for State<T> where
-  T: Ord {
+impl<T> Ord for State<T>
+where
+    T: Ord,
+{
     fn cmp(&self, other: &Self) -> Ordering {
         // Notice that we flip the ordering on costs.
         // In case of a tie we compare positions - this step is necessary
         // to make implementations of `PartialEq` and `Ord` consistent.
-        other.cost.cmp(&self.cost)
+        other
+            .cost
+            .cmp(&self.cost)
             .then_with(|| self.position.cmp(&other.position))
     }
 }
 
 // `PartialOrd` needs to be implemented as well.
-impl<T> PartialOrd for State<T> where
-  T: Ord {
+impl<T> PartialOrd for State<T>
+where
+    T: Ord,
+{
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
@@ -76,11 +86,19 @@ impl<T> PartialOrd for State<T> where
 /// The cost function should return u32::MAX for unpassable tiles.
 ///
 /// Reference: https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
-pub fn shortest_path_generic<T: DijkstraNode, G, N, I>(start: T, goal: T, cost_fn: G, neighbors: N, max_ops: u32, max_cost: u32) -> DijkstraSearchResults<T>
-  where
+pub fn shortest_path_generic<T: DijkstraNode, G, N, I>(
+    start: T,
+    goal: T,
+    cost_fn: G,
+    neighbors: N,
+    max_ops: u32,
+    max_cost: u32,
+) -> DijkstraSearchResults<T>
+where
     G: Fn(T) -> u32,
     N: Fn(T) -> I,
-    I: IntoIterator<Item = T, IntoIter: Iterator<Item = T>> {
+    I: IntoIterator<Item = T, IntoIter: Iterator<Item = T>>,
+{
     // Start at `start` and use `dist` to track the current shortest distance
     // to each node. This implementation isn't memory-efficient as it may leave duplicate
     // nodes in the queue. It also uses `u32::MAX` as a sentinel value,
@@ -97,11 +115,13 @@ pub fn shortest_path_generic<T: DijkstraNode, G, N, I>(start: T, goal: T, cost_f
 
     // We're at `start`, with a zero cost
     dist.insert(start, 0);
-    heap.push(State { cost: 0, position: start });
+    heap.push(State {
+        cost: 0,
+        position: start,
+    });
 
     // Examine the frontier with lower cost nodes first (min-heap)
     while let Some(State { cost, position }) = heap.pop() {
-
         // We found the goal state, return the search results
         if position == goal {
             let path_opt = get_path_from_parents(&parents, start, position);
@@ -133,7 +153,9 @@ pub fn shortest_path_generic<T: DijkstraNode, G, N, I>(start: T, goal: T, cost_f
             Some(c) => c,
             None => &u32::MAX,
         };
-        if cost > *current_cost { continue; }
+        if cost > *current_cost {
+            continue;
+        }
 
         // For each node we can reach, see if we can find a way with
         // a lower cost going through this node
@@ -145,7 +167,10 @@ pub fn shortest_path_generic<T: DijkstraNode, G, N, I>(start: T, goal: T, cost_f
                 continue;
             }
 
-            let next = State { cost: cost + next_tile_cost, position: p };
+            let next = State {
+                cost: cost + next_tile_cost,
+                position: p,
+            };
 
             // If so, add it to the frontier and continue
             let current_next_cost = match dist.get(&next.position) {
@@ -158,18 +183,15 @@ pub fn shortest_path_generic<T: DijkstraNode, G, N, I>(start: T, goal: T, cost_f
                 // Relaxation, we have now found a better way
                 if let Some(c) = dist.get_mut(&next.position) {
                     *c = next.cost;
-                }
-                else {
+                } else {
                     dist.insert(next.position, next.cost);
                 }
 
                 if let Some(parent_node) = parents.get_mut(&next.position) {
                     *parent_node = position;
-                }
-                else {
+                } else {
                     parents.insert(next.position, position);
                 }
-
             }
         }
     }
@@ -183,7 +205,11 @@ pub fn shortest_path_generic<T: DijkstraNode, G, N, I>(start: T, goal: T, cost_f
     }
 }
 
-fn get_path_from_parents<T: DijkstraNode>(parents: &HashMap<T, T>, origin: T, end: T) -> Option<Vec<T>> {
+fn get_path_from_parents<T: DijkstraNode>(
+    parents: &HashMap<T, T>,
+    origin: T,
+    end: T,
+) -> Option<Vec<T>> {
     let mut path = Vec::new();
 
     let mut current_pos = end;
@@ -202,8 +228,8 @@ fn get_path_from_parents<T: DijkstraNode>(parents: &HashMap<T, T>, origin: T, en
 #[cfg(test)]
 mod tests {
     use super::*;
-    use screeps::local::{RoomXY, Position, RoomCoordinate};
     use screeps::constants::Direction;
+    use screeps::local::{Position, RoomCoordinate, RoomXY};
 
     // Helper Functions
 
@@ -237,8 +263,7 @@ mod tests {
     fn roomxy_unreachable_tile_costs(node: RoomXY) -> u32 {
         if node.x.u8() == 10 && node.y.u8() == 12 {
             u32::MAX
-        }
-        else {
+        } else {
             1
         }
     }
@@ -247,8 +272,7 @@ mod tests {
     fn position_unreachable_tile_costs(node: Position) -> u32 {
         if node.x().u8() == 10 && node.y().u8() == 12 {
             u32::MAX
-        }
-        else {
+        } else {
             1
         }
     }
@@ -259,7 +283,14 @@ mod tests {
     fn simple_linear_path_roomxy() {
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
         let goal = unsafe { RoomXY::unchecked_new(10, 12) };
-        let search_results = shortest_path_generic(start, goal, all_tiles_are_plains_costs, room_xy_neighbors, 2000, 2000);
+        let search_results = shortest_path_generic(
+            start,
+            goal,
+            all_tiles_are_plains_costs,
+            room_xy_neighbors,
+            2000,
+            2000,
+        );
 
         assert_eq!(search_results.incomplete(), false);
         assert_eq!(search_results.cost(), 2);
@@ -278,9 +309,9 @@ mod tests {
         assert_eq!(path.contains(&start), true);
         assert_eq!(path.contains(&goal), true);
 
-        let contains_a_middle_node = path.contains(&middle_node_1) |
-                                     path.contains(&middle_node_2) |
-                                     path.contains(&middle_node_3);
+        let contains_a_middle_node = path.contains(&middle_node_1)
+            | path.contains(&middle_node_2)
+            | path.contains(&middle_node_3);
         assert_eq!(contains_a_middle_node, true);
     }
 
@@ -289,7 +320,14 @@ mod tests {
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
         let goal = new_position(room_name, 10, 12);
-        let search_results = shortest_path_generic(start, goal, all_tiles_are_plains_costs, position_neighbors, 2000, 2000);
+        let search_results = shortest_path_generic(
+            start,
+            goal,
+            all_tiles_are_plains_costs,
+            position_neighbors,
+            2000,
+            2000,
+        );
 
         assert_eq!(search_results.incomplete(), false);
         assert_eq!(search_results.cost(), 2);
@@ -308,9 +346,9 @@ mod tests {
         assert_eq!(path.contains(&start), true);
         assert_eq!(path.contains(&goal), true);
 
-        let contains_a_middle_node = path.contains(&middle_node_1) |
-                                     path.contains(&middle_node_2) |
-                                     path.contains(&middle_node_3);
+        let contains_a_middle_node = path.contains(&middle_node_1)
+            | path.contains(&middle_node_2)
+            | path.contains(&middle_node_3);
         assert_eq!(contains_a_middle_node, true);
     }
 
@@ -318,7 +356,14 @@ mod tests {
     fn unreachable_target_roomxy() {
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
         let goal = unsafe { RoomXY::unchecked_new(10, 12) };
-        let search_results = shortest_path_generic(start, goal, roomxy_unreachable_tile_costs, room_xy_neighbors, 2000, 2000);
+        let search_results = shortest_path_generic(
+            start,
+            goal,
+            roomxy_unreachable_tile_costs,
+            room_xy_neighbors,
+            2000,
+            2000,
+        );
 
         println!("{:?}", search_results);
 
@@ -336,7 +381,14 @@ mod tests {
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
         let goal = new_position(room_name, 10, 12);
-        let search_results = shortest_path_generic(start, goal, position_unreachable_tile_costs, position_neighbors, 2000, 2000);
+        let search_results = shortest_path_generic(
+            start,
+            goal,
+            position_unreachable_tile_costs,
+            position_neighbors,
+            2000,
+            2000,
+        );
 
         println!("{:?}", search_results);
 
@@ -357,7 +409,14 @@ mod tests {
         let goal = unsafe { RoomXY::unchecked_new(10, 12) }; // This target generally takes ~11 ops to find
 
         // Failure case
-        let search_results = shortest_path_generic(start, goal, all_tiles_are_plains_costs, room_xy_neighbors, max_ops_failure, 2000);
+        let search_results = shortest_path_generic(
+            start,
+            goal,
+            all_tiles_are_plains_costs,
+            room_xy_neighbors,
+            max_ops_failure,
+            2000,
+        );
 
         assert_eq!(search_results.incomplete(), true);
         assert_eq!(search_results.cost() > 0, true);
@@ -368,7 +427,14 @@ mod tests {
         assert_eq!(path.len(), 0);
 
         // Success case
-        let search_results = shortest_path_generic(start, goal, all_tiles_are_plains_costs, room_xy_neighbors, max_ops_success, 2000);
+        let search_results = shortest_path_generic(
+            start,
+            goal,
+            all_tiles_are_plains_costs,
+            room_xy_neighbors,
+            max_ops_success,
+            2000,
+        );
 
         assert_eq!(search_results.incomplete(), false);
         assert_eq!(search_results.cost() > 0, true);
@@ -388,7 +454,14 @@ mod tests {
         let goal = new_position(room_name, 10, 12); // This target generally takes ~11 ops to find
 
         // Failure case
-        let search_results = shortest_path_generic(start, goal, all_tiles_are_plains_costs, position_neighbors, max_ops_failure, 2000);
+        let search_results = shortest_path_generic(
+            start,
+            goal,
+            all_tiles_are_plains_costs,
+            position_neighbors,
+            max_ops_failure,
+            2000,
+        );
 
         assert_eq!(search_results.incomplete(), true);
         assert_eq!(search_results.cost() > 0, true);
@@ -399,7 +472,14 @@ mod tests {
         assert_eq!(path.len(), 0);
 
         // Success case
-        let search_results = shortest_path_generic(start, goal, all_tiles_are_plains_costs, position_neighbors, max_ops_success, 2000);
+        let search_results = shortest_path_generic(
+            start,
+            goal,
+            all_tiles_are_plains_costs,
+            position_neighbors,
+            max_ops_success,
+            2000,
+        );
 
         assert_eq!(search_results.incomplete(), false);
         assert_eq!(search_results.cost() > 0, true);
@@ -418,7 +498,14 @@ mod tests {
         let goal = unsafe { RoomXY::unchecked_new(10, 12) }; // This target will cost 10 to move to
 
         // Failure case
-        let search_results = shortest_path_generic(start, goal, all_tiles_are_swamps_costs, room_xy_neighbors, 2000, max_cost_failure);
+        let search_results = shortest_path_generic(
+            start,
+            goal,
+            all_tiles_are_swamps_costs,
+            room_xy_neighbors,
+            2000,
+            max_cost_failure,
+        );
 
         assert_eq!(search_results.incomplete(), true);
         assert_eq!(search_results.cost() >= max_cost_failure, true);
@@ -429,7 +516,14 @@ mod tests {
         assert_eq!(path.len(), 0);
 
         // Success case
-        let search_results = shortest_path_generic(start, goal, all_tiles_are_swamps_costs, room_xy_neighbors, 2000, max_cost_success);
+        let search_results = shortest_path_generic(
+            start,
+            goal,
+            all_tiles_are_swamps_costs,
+            room_xy_neighbors,
+            2000,
+            max_cost_success,
+        );
 
         assert_eq!(search_results.incomplete(), false);
         assert_eq!(search_results.cost() < max_cost_success, true);
@@ -449,7 +543,14 @@ mod tests {
         let goal = new_position(room_name, 10, 12); // This target will cost 10 to move to
 
         // Failure case
-        let search_results = shortest_path_generic(start, goal, all_tiles_are_swamps_costs, position_neighbors, 2000, max_cost_failure);
+        let search_results = shortest_path_generic(
+            start,
+            goal,
+            all_tiles_are_swamps_costs,
+            position_neighbors,
+            2000,
+            max_cost_failure,
+        );
 
         assert_eq!(search_results.incomplete(), true);
         assert_eq!(search_results.cost() >= max_cost_failure, true);
@@ -460,7 +561,14 @@ mod tests {
         assert_eq!(path.len(), 0);
 
         // Success case
-        let search_results = shortest_path_generic(start, goal, all_tiles_are_swamps_costs, position_neighbors, 2000, max_cost_success);
+        let search_results = shortest_path_generic(
+            start,
+            goal,
+            all_tiles_are_swamps_costs,
+            position_neighbors,
+            2000,
+            max_cost_success,
+        );
 
         assert_eq!(search_results.incomplete(), false);
         assert_eq!(search_results.cost() < max_cost_success, true);

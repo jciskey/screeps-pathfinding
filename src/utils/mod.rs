@@ -1,9 +1,11 @@
-
-
 use screeps::constants::Terrain;
 use screeps::local::{LocalCostMatrix, LocalRoomTerrain};
 
-pub fn get_lcm_from_terrain(room_terrain: &LocalRoomTerrain, plain_cost: u8, swamp_cost: u8) -> LocalCostMatrix {
+pub fn get_lcm_from_terrain(
+    room_terrain: &LocalRoomTerrain,
+    plain_cost: u8,
+    swamp_cost: u8,
+) -> LocalCostMatrix {
     let mut cm = LocalCostMatrix::new();
 
     for (xy, val) in cm.iter_mut() {
