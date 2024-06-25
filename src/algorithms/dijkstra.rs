@@ -241,11 +241,11 @@ mod tests {
         )
     }
 
-    fn all_tiles_are_plains_costs<T>(node: T) -> u32 {
+    fn all_tiles_are_plains_costs<T>(_node: T) -> u32 {
         1
     }
 
-    fn all_tiles_are_swamps_costs<T>(node: T) -> u32 {
+    fn all_tiles_are_swamps_costs<T>(_node: T) -> u32 {
         5
     }
 
