@@ -16,4 +16,4 @@ starting positions (such as during combat).
 
 ## Current Algorithms
 
-None `:(`
+- Dijkstra's Shortest Path
