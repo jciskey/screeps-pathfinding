@@ -85,6 +85,40 @@ where
 ///
 /// The cost function should return u32::MAX for unpassable tiles.
 ///
+/// # Example
+/// ```rust
+/// use screeps::{LocalRoomTerrain, RoomXY};
+///
+/// let start = RoomXY::checked_new(24, 18).unwrap();
+/// let goal = RoomXY::checked_new(34, 40).unwrap();
+/// let room_terrain = LocalRoomTerrain::new_from_bits(Box::new([0; 2500])); // Terrain that's all plains
+/// let plain_cost = 1;
+/// let swamp_cost = 5;
+/// let costs = screeps_pathfinding::utils::get_lcm_from_terrain(&room_terrain, plain_cost, swamp_cost);
+/// let costs_fn = screeps_pathfinding::utils::movement_costs_from_lcm(&costs);
+/// let neighbors_fn = screeps_pathfinding::utils::room_xy_neighbors;
+/// let max_ops = 2000;
+/// let max_cost = 2000;
+///
+/// let search_results = screeps_pathfinding::algorithms::dijkstra::shortest_path_generic(
+///     start,
+///     goal,
+///     costs_fn,
+///     neighbors_fn,
+///     max_ops,
+///     max_cost,
+/// );
+///
+/// if !search_results.incomplete() {
+///   let path = search_results.path();
+///   println!("Path: {:?}", path);
+/// }
+/// else {
+///   println!("Could not find Dijkstra shortest path.");
+///   println!("Search Results: {:?}", search_results);
+/// }
+/// ```
+///
 /// Reference: https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
 pub fn shortest_path_generic<T: DijkstraNode, G, N, I>(
     start: T,
