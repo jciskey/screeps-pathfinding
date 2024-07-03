@@ -23,18 +23,22 @@ where
 }
 
 impl<T: DijkstraNode> DijkstraSearchResults<T> {
+    /// The number of expand node operations used
     pub fn ops(&self) -> u32 {
         self.ops_used
     }
 
+    /// The movement cost of the result path
     pub fn cost(&self) -> u32 {
         self.cost
     }
 
+    /// Whether the path contained is incomplete
     pub fn incomplete(&self) -> bool {
         self.incomplete
     }
 
+    /// A shortest path from the start node to the goal node
     pub fn path(&self) -> &[T] {
         &self.path
     }
@@ -94,7 +98,7 @@ where
 /// let room_terrain = LocalRoomTerrain::new_from_bits(Box::new([0; 2500])); // Terrain that's all plains
 /// let plain_cost = 1;
 /// let swamp_cost = 5;
-/// let costs = screeps_pathfinding::utils::get_lcm_from_terrain(&room_terrain, plain_cost, swamp_cost);
+/// let costs = screeps_pathfinding::utils::get_movement_cost_lcm_from_terrain(&room_terrain, plain_cost, swamp_cost);
 /// let costs_fn = screeps_pathfinding::utils::movement_costs_from_lcm(&costs);
 /// let neighbors_fn = screeps_pathfinding::utils::room_xy_neighbors;
 /// let max_ops = 2000;

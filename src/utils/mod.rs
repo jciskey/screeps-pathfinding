@@ -2,7 +2,7 @@ use screeps::constants::{Direction, Terrain};
 use screeps::local::{LocalCostMatrix, LocalRoomTerrain};
 use screeps::{Position, RoomXY};
 
-pub fn get_lcm_from_terrain(
+pub fn get_movement_cost_lcm_from_terrain(
     room_terrain: &LocalRoomTerrain,
     plain_cost: u8,
     swamp_cost: u8,
@@ -39,7 +39,7 @@ pub fn position_neighbors(node: Position) -> Vec<Position> {
 /// let room_terrain = LocalRoomTerrain::new_from_bits(Box::new([0; 2500])); // Terrain that's all plains
 /// let plain_cost = 1;
 /// let swamp_cost = 5;
-/// let costs = screeps_pathfinding::utils::get_lcm_from_terrain(&room_terrain, plain_cost, swamp_cost);
+/// let costs = screeps_pathfinding::utils::get_movement_cost_lcm_from_terrain(&room_terrain, plain_cost, swamp_cost);
 ///
 /// let roomxy_costs_fn = screeps_pathfinding::utils::movement_costs_from_lcm(&costs);
 ///
