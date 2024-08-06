@@ -6,10 +6,12 @@ use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 use std::hash::Hash;
 
+use crate::utils::Neighbors;
+
 /// A simple trait encapsulating what other traits are needed
 /// for a type to be usable in Dijkstra's Algorithm.
-pub trait DijkstraNode: Eq + Hash + Copy + Ord {}
-impl<T> DijkstraNode for T where T: Eq + Hash + Copy + Ord {}
+pub trait DijkstraNode: Eq + Hash + Copy + Ord + Neighbors {}
+impl<T> DijkstraNode for T where T: Eq + Hash + Copy + Ord + Neighbors {}
 
 #[derive(Debug)]
 pub struct DijkstraSearchResults<T>
@@ -100,7 +102,6 @@ where
 /// let swamp_cost = 5;
 /// let costs = screeps_pathfinding::utils::get_movement_cost_lcm_from_terrain(&room_terrain, plain_cost, swamp_cost);
 /// let costs_fn = screeps_pathfinding::utils::movement_costs_from_lcm(&costs);
-/// let neighbors_fn = screeps_pathfinding::utils::room_xy_neighbors;
 /// let max_ops = 2000;
 /// let max_cost = 2000;
 ///
@@ -108,7 +109,6 @@ where
 ///     start,
 ///     goal,
 ///     costs_fn,
-///     neighbors_fn,
 ///     max_ops,
 ///     max_cost,
 /// );
@@ -124,18 +124,15 @@ where
 /// ```
 ///
 /// Reference: https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
-pub fn shortest_path_generic<T: DijkstraNode, G, N, I>(
+pub fn shortest_path_generic<T: DijkstraNode, G>(
     start: T,
     goal: T,
     cost_fn: G,
-    neighbors: N,
     max_ops: u32,
     max_cost: u32,
 ) -> DijkstraSearchResults<T>
 where
     G: Fn(T) -> u32,
-    N: Fn(T) -> I,
-    I: IntoIterator<Item = T, IntoIter: Iterator<Item = T>>,
 {
     // Start at `start` and use `dist` to track the current shortest distance
     // to each node. This implementation isn't memory-efficient as it may leave duplicate
@@ -197,7 +194,7 @@ where
 
         // For each node we can reach, see if we can find a way with
         // a lower cost going through this node
-        for p in neighbors(position) {
+        for p in position.neighbors() {
             let next_tile_cost = cost_fn(p);
 
             // u32::MAX is our sentinel value for unpassable, skip this neighbor
@@ -287,16 +284,6 @@ mod tests {
         5
     }
 
-    fn room_xy_neighbors(node: RoomXY) -> Vec<RoomXY> {
-        node.neighbors()
-    }
-
-    fn position_neighbors(node: Position) -> Vec<Position> {
-        Direction::iter()
-            .filter_map(|dir| node.checked_add_direction(*dir).ok())
-            .collect()
-    }
-
     // Testing function where all tiles are reachable except for (10, 12)
     fn roomxy_unreachable_tile_costs(node: RoomXY) -> u32 {
         if node.x.u8() == 10 && node.y.u8() == 12 {
@@ -321,14 +308,8 @@ mod tests {
     fn simple_linear_path_roomxy() {
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
         let goal = unsafe { RoomXY::unchecked_new(10, 12) };
-        let search_results = shortest_path_generic(
-            start,
-            goal,
-            all_tiles_are_plains_costs,
-            room_xy_neighbors,
-            2000,
-            2000,
-        );
+        let search_results =
+            shortest_path_generic(start, goal, all_tiles_are_plains_costs, 2000, 2000);
 
         assert_eq!(search_results.incomplete(), false);
         assert_eq!(search_results.cost(), 2);
@@ -358,14 +339,8 @@ mod tests {
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
         let goal = new_position(room_name, 10, 12);
-        let search_results = shortest_path_generic(
-            start,
-            goal,
-            all_tiles_are_plains_costs,
-            position_neighbors,
-            2000,
-            2000,
-        );
+        let search_results =
+            shortest_path_generic(start, goal, all_tiles_are_plains_costs, 2000, 2000);
 
         assert_eq!(search_results.incomplete(), false);
         assert_eq!(search_results.cost(), 2);
@@ -394,14 +369,8 @@ mod tests {
     fn unreachable_target_roomxy() {
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
         let goal = unsafe { RoomXY::unchecked_new(10, 12) };
-        let search_results = shortest_path_generic(
-            start,
-            goal,
-            roomxy_unreachable_tile_costs,
-            room_xy_neighbors,
-            2000,
-            2000,
-        );
+        let search_results =
+            shortest_path_generic(start, goal, roomxy_unreachable_tile_costs, 2000, 2000);
 
         println!("{:?}", search_results);
 
@@ -419,14 +388,8 @@ mod tests {
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
         let goal = new_position(room_name, 10, 12);
-        let search_results = shortest_path_generic(
-            start,
-            goal,
-            position_unreachable_tile_costs,
-            position_neighbors,
-            2000,
-            2000,
-        );
+        let search_results =
+            shortest_path_generic(start, goal, position_unreachable_tile_costs, 2000, 2000);
 
         println!("{:?}", search_results);
 
@@ -451,7 +414,6 @@ mod tests {
             start,
             goal,
             all_tiles_are_plains_costs,
-            room_xy_neighbors,
             max_ops_failure,
             2000,
         );
@@ -469,7 +431,6 @@ mod tests {
             start,
             goal,
             all_tiles_are_plains_costs,
-            room_xy_neighbors,
             max_ops_success,
             2000,
         );
@@ -496,7 +457,6 @@ mod tests {
             start,
             goal,
             all_tiles_are_plains_costs,
-            position_neighbors,
             max_ops_failure,
             2000,
         );
@@ -514,7 +474,6 @@ mod tests {
             start,
             goal,
             all_tiles_are_plains_costs,
-            position_neighbors,
             max_ops_success,
             2000,
         );
@@ -540,7 +499,6 @@ mod tests {
             start,
             goal,
             all_tiles_are_swamps_costs,
-            room_xy_neighbors,
             2000,
             max_cost_failure,
         );
@@ -558,7 +516,6 @@ mod tests {
             start,
             goal,
             all_tiles_are_swamps_costs,
-            room_xy_neighbors,
             2000,
             max_cost_success,
         );
@@ -585,7 +542,6 @@ mod tests {
             start,
             goal,
             all_tiles_are_swamps_costs,
-            position_neighbors,
             2000,
             max_cost_failure,
         );
@@ -603,7 +559,6 @@ mod tests {
             start,
             goal,
             all_tiles_are_swamps_costs,
-            position_neighbors,
             2000,
             max_cost_success,
         );

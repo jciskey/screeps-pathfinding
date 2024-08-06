@@ -20,14 +20,32 @@ pub fn get_movement_cost_lcm_from_terrain(
     cm
 }
 
-pub fn room_xy_neighbors(node: RoomXY) -> Vec<RoomXY> {
-    node.neighbors()
+pub trait Neighbors {
+    fn checked_add_direction(self, direction: Direction) -> Option<Self>
+    where
+        Self: Sized + Copy;
+
+    fn neighbors(self) -> Vec<Self>
+    where
+        Self: Sized + Copy,
+    {
+        Direction::iter()
+            .copied()
+            .filter_map(|dir| self.checked_add_direction(dir))
+            .collect()
+    }
 }
 
-pub fn position_neighbors(node: Position) -> Vec<Position> {
-    Direction::iter()
-        .filter_map(|dir| node.checked_add_direction(*dir).ok())
-        .collect()
+impl Neighbors for RoomXY {
+    fn checked_add_direction(self, direction: Direction) -> Option<Self> {
+        Self::checked_add_direction(self, direction)
+    }
+}
+
+impl Neighbors for Position {
+    fn checked_add_direction(self, direction: Direction) -> Option<Self> {
+        Self::checked_add_direction(self, direction).ok()
+    }
 }
 
 /// Builds a cost function closure that pulls costs from a `LocalCostMatrix`.
