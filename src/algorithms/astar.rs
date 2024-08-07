@@ -3,7 +3,10 @@
 // Sample code pulled (and modified) from: https://doc.rust-lang.org/nightly/std/collections/binary_heap/index.html#examples
 
 use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{
+    hash_map::Entry,
+    {BinaryHeap, HashMap},
+};
 use std::hash::Hash;
 
 use screeps::constants::Direction;
@@ -169,7 +172,8 @@ where
                 continue;
             };
 
-            if parents.insert(check_pos, position).is_none() {
+            if let Entry::Vacant(v) = parents.entry(check_pos) {
+                v.insert(position);
                 let next_tile_cost = cost_fn(check_pos);
 
                 let g_score = g_score.saturating_add(next_tile_cost);
