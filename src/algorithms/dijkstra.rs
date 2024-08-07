@@ -263,7 +263,7 @@ fn get_path_from_parents<T: DijkstraNode>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use screeps::local::{Position, RoomCoordinate, RoomXY};
 
     // Helper Functions

@@ -197,7 +197,14 @@ where
         }
 
         let directions: &[Direction] = if let Some(open_direction) = open_direction {
+            // we know what direction this tile was opened from; only explore the tiles
+            // that might potentially be optimal moves
             if open_direction.is_diagonal() {
+                // diagonal move; 2 rotations away might be optimal, while other moves would always
+                // be more efficiently reached without traversing this tile:
+                // ↖↑↗
+                // ←●
+                // ↙ ↖
                 &[
                     open_direction,
                     open_direction.multi_rot(1),
@@ -206,6 +213,12 @@ where
                     open_direction.multi_rot(-2),
                 ]
             } else {
+                // orthogonal move; only continuing straight or turning 45 degrees can be optimal
+                // and should be explored; 90 degree moves would be more efficient as diagonal
+                // moves from the parent tile without traversing this tile:
+                //   ↗
+                // →●→
+                //   ↘
                 &[
                     open_direction,
                     open_direction.multi_rot(1),
@@ -213,7 +226,7 @@ where
                 ]
             }
         } else {
-            // didn't start with a direction, iterate all
+            // didn't start with a direction, this is probably the start tile; check all directions
             // todo can we get this from enum_iterator or something better than this?
             &[
                 Direction::Top,
@@ -271,7 +284,7 @@ fn get_path_from_parents<T: AStarNode>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use screeps::local::{Position, RoomCoordinate, RoomXY};
 
     // Helper Functions
