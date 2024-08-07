@@ -48,6 +48,22 @@ impl Neighbors for Position {
     }
 }
 
+pub trait RangeHeuristic {
+    fn get_range_heuristic(self, other: Self) -> u32;
+}
+
+impl RangeHeuristic for RoomXY {
+    fn get_range_heuristic(self, other: Self) -> u32 {
+        self.get_range_to(other)
+    }
+}
+
+impl RangeHeuristic for Position {
+    fn get_range_heuristic(self, other: Self) -> u32 {
+        self.get_range_to(other)
+    }
+}
+
 /// Builds a cost function closure that pulls costs from a `LocalCostMatrix`.
 ///
 /// # Example
