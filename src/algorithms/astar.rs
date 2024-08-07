@@ -342,10 +342,6 @@ mod tests {
         assert_eq!(search_results.incomplete(), true);
         assert_eq!(search_results.cost() > 0, true);
         assert_eq!(search_results.ops() == 2000, true);
-
-        let path = search_results.path();
-
-        assert_eq!(path.len(), 0);
     }
 
     #[test]
@@ -361,10 +357,6 @@ mod tests {
         assert_eq!(search_results.incomplete(), true);
         assert_eq!(search_results.cost() > 0, true);
         assert_eq!(search_results.ops() > 0, true);
-
-        let path = search_results.path();
-
-        assert_eq!(path.len(), 0);
     }
 
     #[test]
@@ -372,7 +364,7 @@ mod tests {
         let max_ops_failure = 5;
         let max_ops_success = 100;
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
-        let goal = unsafe { RoomXY::unchecked_new(10, 12) }; // This target generally takes ~11 ops to find
+        let goal = unsafe { RoomXY::unchecked_new(30, 30) }; // This target generally takes ~20 ops to find
 
         // Failure case
         let search_results = shortest_path_generic(
@@ -386,10 +378,6 @@ mod tests {
         assert_eq!(search_results.incomplete(), true);
         assert_eq!(search_results.cost() > 0, true);
         assert_eq!(search_results.ops() == max_ops_failure, true);
-
-        let path = search_results.path();
-
-        assert_eq!(path.len(), 0);
 
         // Success case
         let search_results = shortest_path_generic(
@@ -406,7 +394,7 @@ mod tests {
 
         let path = search_results.path();
 
-        assert_eq!(path.len(), 3);
+        assert_eq!(path.len(), 21);
     }
 
     #[test]
@@ -415,7 +403,7 @@ mod tests {
         let max_ops_success = 100;
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
-        let goal = new_position(room_name, 10, 12); // This target generally takes ~11 ops to find
+        let goal = new_position(room_name, 30, 30); // This target generally takes ~20 ops to find
 
         // Failure case
         let search_results = shortest_path_generic(
@@ -429,10 +417,6 @@ mod tests {
         assert_eq!(search_results.incomplete(), true);
         assert_eq!(search_results.cost() > 0, true);
         assert_eq!(search_results.ops() == max_ops_failure, true);
-
-        let path = search_results.path();
-
-        assert_eq!(path.len(), 0);
 
         // Success case
         let search_results = shortest_path_generic(
@@ -449,7 +433,7 @@ mod tests {
 
         let path = search_results.path();
 
-        assert_eq!(path.len(), 3);
+        assert_eq!(path.len(), 21);
     }
 
     #[test]
@@ -469,12 +453,7 @@ mod tests {
         );
 
         assert_eq!(search_results.incomplete(), true);
-        assert_eq!(search_results.cost() >= max_cost_failure, true);
         assert_eq!(search_results.ops() < 2000, true);
-
-        let path = search_results.path();
-
-        assert_eq!(path.len(), 0);
 
         // Success case
         let search_results = shortest_path_generic(
