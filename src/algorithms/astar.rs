@@ -197,12 +197,12 @@ where
 
     // Goal not reachable
     let path_opt = get_path_from_parents(&parents, start, best_reached);
-    return AStarSearchResults {
+    AStarSearchResults {
         ops_used: max_ops - remaining_ops,
         cost: best_reached_f_score,
         incomplete: true,
         path: path_opt.unwrap_or_else(|| Vec::new()),
-    };
+    }
 }
 
 fn get_path_from_parents<T: AStarNode>(
