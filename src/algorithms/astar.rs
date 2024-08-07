@@ -94,6 +94,45 @@ where
     }
 }
 
+fn check_directions<T: AStarNode, G>(
+    start: T,
+    goal: T,
+    g_score: u32,
+    directions: &[Direction],
+    cost_fn: G,
+    heap: &mut BinaryHeap<State<T>>,
+    parents: &mut HashMap<T, T>,
+) where
+    G: Fn(T) -> u32,
+{
+    for direction in directions.iter().copied() {
+        let Some(check_pos) = start.checked_add_direction(direction) else {
+            continue;
+        };
+
+        if let Entry::Vacant(v) = parents.entry(check_pos) {
+            v.insert(start);
+            let next_tile_cost = cost_fn(check_pos);
+
+            let g_score = g_score.saturating_add(next_tile_cost);
+
+            // u32::MAX is our sentinel value for unpassable (or we've saturated the above add), skip this neighbor
+            if g_score == u32::MAX {
+                continue;
+            }
+
+            let f_score = g_score.saturating_add(check_pos.get_range_heuristic(goal));
+
+            heap.push(State {
+                g_score,
+                f_score,
+                position: check_pos,
+                open_direction: Some(direction),
+            });
+        }
+    }
+}
+
 pub fn shortest_path_generic<T: AStarNode, G>(
     start: T,
     goal: T,
@@ -157,42 +196,24 @@ where
             continue;
         }
 
-        // TODO use open_direction and toss to a function
-        for direction in [
-            Direction::Top,
-            Direction::TopRight,
-            Direction::Right,
-            Direction::BottomRight,
-            Direction::Bottom,
-            Direction::BottomLeft,
-            Direction::Left,
-            Direction::TopLeft,
-        ] {
-            let Some(check_pos) = position.checked_add_direction(direction) else {
-                continue;
-            };
-
-            if let Entry::Vacant(v) = parents.entry(check_pos) {
-                v.insert(position);
-                let next_tile_cost = cost_fn(check_pos);
-
-                let g_score = g_score.saturating_add(next_tile_cost);
-
-                // u32::MAX is our sentinel value for unpassable (or we've saturated the above add), skip this neighbor
-                if g_score == u32::MAX {
-                    continue;
-                }
-
-                let f_score = g_score.saturating_add(check_pos.get_range_heuristic(goal));
-
-                heap.push(State {
-                    g_score,
-                    f_score,
-                    position: check_pos,
-                    open_direction: Some(direction),
-                });
-            }
-        }
+        check_directions(
+            position,
+            goal,
+            g_score,
+            &[
+                Direction::Top,
+                Direction::TopRight,
+                Direction::Right,
+                Direction::BottomRight,
+                Direction::Bottom,
+                Direction::BottomLeft,
+                Direction::Left,
+                Direction::TopLeft,
+            ],
+            &cost_fn,
+            &mut heap,
+            &mut parents,
+        );
     }
 
     // Goal not reachable
