@@ -196,10 +196,25 @@ where
             continue;
         }
 
-        check_directions(
-            position,
-            goal,
-            g_score,
+        let directions: &[Direction] = if let Some(open_direction) = open_direction {
+            if open_direction.is_diagonal() {
+                &[
+                    open_direction,
+                    open_direction.multi_rot(1),
+                    open_direction.multi_rot(-1),
+                    open_direction.multi_rot(2),
+                    open_direction.multi_rot(-2),
+                ]
+            } else {
+                &[
+                    open_direction,
+                    open_direction.multi_rot(1),
+                    open_direction.multi_rot(-1),
+                ]
+            }
+        } else {
+            // didn't start with a direction, iterate all
+            // todo can we get this from enum_iterator or something better than this?
             &[
                 Direction::Top,
                 Direction::TopRight,
@@ -209,7 +224,14 @@ where
                 Direction::BottomLeft,
                 Direction::Left,
                 Direction::TopLeft,
-            ],
+            ]
+        };
+
+        check_directions(
+            position,
+            goal,
+            g_score,
+            directions,
             &cost_fn,
             &mut heap,
             &mut parents,
@@ -249,7 +271,7 @@ fn get_path_from_parents<T: AStarNode>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use screeps::constants::Direction;
+    
     use screeps::local::{Position, RoomCoordinate, RoomXY};
 
     // Helper Functions
