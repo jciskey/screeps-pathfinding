@@ -6,6 +6,8 @@ use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 use std::hash::Hash;
 
+use screeps::local::{Position, RoomXY};
+
 /// A simple trait encapsulating what other traits are needed
 /// for a type to be usable in Dijkstra's Algorithm.
 pub trait DijkstraNode: Eq + Hash + Copy + Ord {}
@@ -94,19 +96,19 @@ where
 /// use screeps::{LocalRoomTerrain, RoomXY};
 ///
 /// let start = RoomXY::checked_new(24, 18).unwrap();
-/// let goal = RoomXY::checked_new(34, 40).unwrap();
+/// let goal_fn = (|p| p == RoomXY::checked_new(34, 40).unwrap());
 /// let room_terrain = LocalRoomTerrain::new_from_bits(Box::new([0; 2500])); // Terrain that's all plains
 /// let plain_cost = 1;
 /// let swamp_cost = 5;
-/// let costs = screeps_pathfinding::utils::get_movement_cost_lcm_from_terrain(&room_terrain, plain_cost, swamp_cost);
-/// let costs_fn = screeps_pathfinding::utils::movement_costs_from_lcm(&costs);
-/// let neighbors_fn = screeps_pathfinding::utils::room_xy_neighbors;
+/// let costs = screeps_pathfinding::utils::movement_costs::get_movement_cost_lcm_from_terrain(&room_terrain, plain_cost, swamp_cost);
+/// let costs_fn = screeps_pathfinding::utils::movement_costs::movement_costs_from_lcm(&costs);
+/// let neighbors_fn = screeps_pathfinding::utils::neighbors::room_xy_neighbors;
 /// let max_ops = 2000;
 /// let max_cost = 2000;
 ///
 /// let search_results = screeps_pathfinding::algorithms::dijkstra::shortest_path_generic(
-///     start,
-///     goal,
+///     &[start],
+///     &goal_fn,
 ///     costs_fn,
 ///     neighbors_fn,
 ///     max_ops,
@@ -124,15 +126,16 @@ where
 /// ```
 ///
 /// Reference: https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
-pub fn shortest_path_generic<T: DijkstraNode, G, N, I>(
-    start: T,
-    goal: T,
+pub fn shortest_path_generic<T: DijkstraNode, P, G, N, I>(
+    start: &[T],
+    goal_fn: &P,
     cost_fn: G,
     neighbors: N,
     max_ops: u32,
     max_cost: u32,
 ) -> DijkstraSearchResults<T>
 where
+    P: Fn(T) -> bool,
     G: Fn(T) -> u32,
     N: Fn(T) -> I,
     I: IntoIterator<Item = T, IntoIter: Iterator<Item = T>>,
@@ -152,17 +155,19 @@ where
     let mut heap = BinaryHeap::new();
 
     // We're at `start`, with a zero cost
-    dist.insert(start, 0);
-    heap.push(State {
-        cost: 0,
-        position: start,
-    });
+    for s in start {
+        dist.insert(*s, 0);
+        heap.push(State {
+            cost: 0,
+            position: *s,
+        });
+    }
 
     // Examine the frontier with lower cost nodes first (min-heap)
     while let Some(State { cost, position }) = heap.pop() {
         // We found the goal state, return the search results
-        if position == goal {
-            let path_opt = get_path_from_parents(&parents, start, position);
+        if goal_fn(position) {
+            let path_opt = get_path_from_parents(&parents, position);
             return DijkstraSearchResults {
                 ops_used: max_ops - remaining_ops,
                 cost,
@@ -245,7 +250,6 @@ where
 
 fn get_path_from_parents<T: DijkstraNode>(
     parents: &HashMap<T, T>,
-    origin: T,
     end: T,
 ) -> Option<Vec<T>> {
     let mut path = Vec::new();
@@ -254,13 +258,91 @@ fn get_path_from_parents<T: DijkstraNode>(
 
     path.push(end);
 
-    while current_pos != origin {
-        let parent = parents.get(&current_pos)?;
+    let mut parent_opt = parents.get(&current_pos);
+    while parent_opt.is_some() {
+        let parent = parent_opt.unwrap();
         path.push(*parent);
         current_pos = *parent;
+        parent_opt = parents.get(&current_pos);
     }
 
     Some(path.into_iter().rev().collect())
+}
+
+pub fn shortest_path_roomxy<P, G>(
+    start: RoomXY,
+    goal_fn: &P,
+    cost_fn: G
+) -> DijkstraSearchResults<RoomXY>
+where
+    P: Fn(RoomXY) -> bool,
+    G: Fn(RoomXY) -> u32,
+{
+    shortest_path_roomxy_multistart(
+        &[start],
+        goal_fn,
+        cost_fn,
+    )
+}
+
+pub fn shortest_path_roomxy_multistart<P, G>(
+    start_nodes: &[RoomXY],
+    goal_fn: &P,
+    cost_fn: G
+) -> DijkstraSearchResults<RoomXY>
+where
+    P: Fn(RoomXY) -> bool,
+    G: Fn(RoomXY) -> u32,
+{
+    let neighbors_fn = crate::utils::neighbors::room_xy_neighbors;
+    let max_ops = 2000;
+    let max_cost = 2000;
+    shortest_path_generic(
+        start_nodes,
+        goal_fn,
+        cost_fn,
+        neighbors_fn,
+        max_ops,
+        max_cost,
+    )
+}
+
+pub fn shortest_path_position<P, G>(
+    start: Position,
+    goal_fn: &P,
+    cost_fn: G
+) -> DijkstraSearchResults<Position>
+where
+    P: Fn(Position) -> bool,
+    G: Fn(Position) -> u32,
+{
+    shortest_path_position_multistart(
+        &[start],
+        goal_fn,
+        cost_fn,
+    )
+}
+
+pub fn shortest_path_position_multistart<P, G>(
+    start_nodes: &[Position],
+    goal_fn: &P,
+    cost_fn: G
+) -> DijkstraSearchResults<Position>
+where
+    P: Fn(Position) -> bool,
+    G: Fn(Position) -> u32,
+{
+    let neighbors_fn = crate::utils::neighbors::position_neighbors;
+    let max_ops = 2000;
+    let max_cost = 2000;
+    shortest_path_generic(
+        start_nodes,
+        goal_fn,
+        cost_fn,
+        neighbors_fn,
+        max_ops,
+        max_cost,
+    )
 }
 
 #[cfg(test)]
@@ -315,15 +397,20 @@ mod tests {
         }
     }
 
+    fn node_matches_closure<T: std::cmp::PartialEq>(node: T) -> impl Fn(T) -> bool {
+        move |p| p == node
+    }
+
     // Test Cases
 
     #[test]
     fn simple_linear_path_roomxy() {
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
         let goal = unsafe { RoomXY::unchecked_new(10, 12) };
+        let goal_fn = node_matches_closure(goal);
         let search_results = shortest_path_generic(
-            start,
-            goal,
+            &[start],
+            &goal_fn,
             all_tiles_are_plains_costs,
             room_xy_neighbors,
             2000,
@@ -358,9 +445,10 @@ mod tests {
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
         let goal = new_position(room_name, 10, 12);
+        let goal_fn = node_matches_closure(goal);
         let search_results = shortest_path_generic(
-            start,
-            goal,
+            &[start],
+            &goal_fn,
             all_tiles_are_plains_costs,
             position_neighbors,
             2000,
@@ -393,10 +481,10 @@ mod tests {
     #[test]
     fn unreachable_target_roomxy() {
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
-        let goal = unsafe { RoomXY::unchecked_new(10, 12) };
+        let goal_fn = node_matches_closure(unsafe { RoomXY::unchecked_new(10, 12) });
         let search_results = shortest_path_generic(
-            start,
-            goal,
+            &[start],
+            &goal_fn,
             roomxy_unreachable_tile_costs,
             room_xy_neighbors,
             2000,
@@ -418,10 +506,10 @@ mod tests {
     fn unreachable_target_position() {
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
-        let goal = new_position(room_name, 10, 12);
+        let goal_fn = node_matches_closure(new_position(room_name, 10, 12));
         let search_results = shortest_path_generic(
-            start,
-            goal,
+            &[start],
+            &goal_fn,
             position_unreachable_tile_costs,
             position_neighbors,
             2000,
@@ -444,12 +532,12 @@ mod tests {
         let max_ops_failure = 5;
         let max_ops_success = 100;
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
-        let goal = unsafe { RoomXY::unchecked_new(10, 12) }; // This target generally takes ~11 ops to find
+        let goal_fn = node_matches_closure(unsafe { RoomXY::unchecked_new(10, 12) }); // This target generally takes ~11 ops to find
 
         // Failure case
         let search_results = shortest_path_generic(
-            start,
-            goal,
+            &[start],
+            &goal_fn,
             all_tiles_are_plains_costs,
             room_xy_neighbors,
             max_ops_failure,
@@ -466,8 +554,8 @@ mod tests {
 
         // Success case
         let search_results = shortest_path_generic(
-            start,
-            goal,
+            &[start],
+            &goal_fn,
             all_tiles_are_plains_costs,
             room_xy_neighbors,
             max_ops_success,
@@ -489,12 +577,12 @@ mod tests {
         let max_ops_success = 100;
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
-        let goal = new_position(room_name, 10, 12); // This target generally takes ~11 ops to find
+        let goal_fn = node_matches_closure(new_position(room_name, 10, 12)); // This target generally takes ~11 ops to find
 
         // Failure case
         let search_results = shortest_path_generic(
-            start,
-            goal,
+            &[start],
+            &goal_fn,
             all_tiles_are_plains_costs,
             position_neighbors,
             max_ops_failure,
@@ -511,8 +599,8 @@ mod tests {
 
         // Success case
         let search_results = shortest_path_generic(
-            start,
-            goal,
+            &[start],
+            &goal_fn,
             all_tiles_are_plains_costs,
             position_neighbors,
             max_ops_success,
@@ -533,12 +621,12 @@ mod tests {
         let max_cost_failure = 5;
         let max_cost_success = 100;
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
-        let goal = unsafe { RoomXY::unchecked_new(10, 12) }; // This target will cost 10 to move to
+        let goal_fn = node_matches_closure(unsafe { RoomXY::unchecked_new(10, 12) }); // This target will cost 10 to move to
 
         // Failure case
         let search_results = shortest_path_generic(
-            start,
-            goal,
+            &[start],
+            &goal_fn,
             all_tiles_are_swamps_costs,
             room_xy_neighbors,
             2000,
@@ -555,8 +643,8 @@ mod tests {
 
         // Success case
         let search_results = shortest_path_generic(
-            start,
-            goal,
+            &[start],
+            &goal_fn,
             all_tiles_are_swamps_costs,
             room_xy_neighbors,
             2000,
@@ -578,12 +666,12 @@ mod tests {
         let max_cost_success = 100;
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
-        let goal = new_position(room_name, 10, 12); // This target will cost 10 to move to
+        let goal_fn = node_matches_closure(new_position(room_name, 10, 12)); // This target will cost 10 to move to
 
         // Failure case
         let search_results = shortest_path_generic(
-            start,
-            goal,
+            &[start],
+            &goal_fn,
             all_tiles_are_swamps_costs,
             position_neighbors,
             2000,
@@ -600,8 +688,8 @@ mod tests {
 
         // Success case
         let search_results = shortest_path_generic(
-            start,
-            goal,
+            &[start],
+            &goal_fn,
             all_tiles_are_swamps_costs,
             position_neighbors,
             2000,
