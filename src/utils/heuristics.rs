@@ -55,7 +55,7 @@ pub fn heuristic_get_range_to_multigoal<T: GetRangeTo + Copy>(
 ) -> impl Fn(T) -> u32 + '_ {
     |node: T| {
         goals
-            .into_iter()
+            .iter()
             .map(|g| node.get_range_to(*g))
             .min()
             .unwrap_or(0)

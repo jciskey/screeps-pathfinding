@@ -171,7 +171,7 @@ where
     let mut parents: HashMap<T, T> = HashMap::new();
     let mut heap = BinaryHeap::new();
 
-    for s in start.into_iter().copied() {
+    for s in start.iter().copied() {
         let initial_open_entry = State {
             g_score: 0,
             f_score: heuristic_fn(s),
@@ -250,7 +250,7 @@ where
             }
         } else {
             // didn't start with a direction, this is probably the start tile; check all directions
-            &all_directions
+            all_directions
         };
 
         check_directions(
