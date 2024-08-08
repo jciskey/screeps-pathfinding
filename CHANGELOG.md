@@ -10,3 +10,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added Dijkstra's Algorithm
+- Added A* Algorithm
+- Added utility helper methods for heuristics and goals

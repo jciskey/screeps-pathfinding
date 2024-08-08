@@ -94,9 +94,10 @@ where
 /// # Example
 /// ```rust
 /// use screeps::{LocalRoomTerrain, RoomXY};
+/// use screeps_pathfinding::utils::goals::goal_exact_node;
 ///
 /// let start = RoomXY::checked_new(24, 18).unwrap();
-/// let goal_fn = (|p| p == RoomXY::checked_new(34, 40).unwrap());
+/// let goal = RoomXY::checked_new(34, 40).unwrap();
 /// let room_terrain = LocalRoomTerrain::new_from_bits(Box::new([0; 2500])); // Terrain that's all plains
 /// let plain_cost = 1;
 /// let swamp_cost = 5;
@@ -108,7 +109,7 @@ where
 ///
 /// let search_results = screeps_pathfinding::algorithms::dijkstra::shortest_path_generic(
 ///     &[start],
-///     &goal_fn,
+///     &goal_exact_node(goal),
 ///     costs_fn,
 ///     neighbors_fn,
 ///     max_ops,
@@ -125,7 +126,7 @@ where
 /// }
 /// ```
 ///
-/// Reference: https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
+/// Reference: <https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm>
 pub fn shortest_path_generic<T: DijkstraNode, P, G, N, I>(
     start: &[T],
     goal_fn: &P,
@@ -350,6 +351,7 @@ mod tests {
     use super::*;
     use screeps::constants::Direction;
     use screeps::local::{Position, RoomCoordinate, RoomXY};
+    use crate::utils::goals::goal_exact_node;
 
     // Helper Functions
 
@@ -397,17 +399,13 @@ mod tests {
         }
     }
 
-    fn node_matches_closure<T: std::cmp::PartialEq>(node: T) -> impl Fn(T) -> bool {
-        move |p| p == node
-    }
-
     // Test Cases
 
     #[test]
     fn simple_linear_path_roomxy() {
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
         let goal = unsafe { RoomXY::unchecked_new(10, 12) };
-        let goal_fn = node_matches_closure(goal);
+        let goal_fn = goal_exact_node(goal);
         let search_results = shortest_path_generic(
             &[start],
             &goal_fn,
@@ -445,7 +443,7 @@ mod tests {
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
         let goal = new_position(room_name, 10, 12);
-        let goal_fn = node_matches_closure(goal);
+        let goal_fn = goal_exact_node(goal);
         let search_results = shortest_path_generic(
             &[start],
             &goal_fn,
@@ -481,7 +479,7 @@ mod tests {
     #[test]
     fn unreachable_target_roomxy() {
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
-        let goal_fn = node_matches_closure(unsafe { RoomXY::unchecked_new(10, 12) });
+        let goal_fn = goal_exact_node(unsafe { RoomXY::unchecked_new(10, 12) });
         let search_results = shortest_path_generic(
             &[start],
             &goal_fn,
@@ -506,7 +504,7 @@ mod tests {
     fn unreachable_target_position() {
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
-        let goal_fn = node_matches_closure(new_position(room_name, 10, 12));
+        let goal_fn = goal_exact_node(new_position(room_name, 10, 12));
         let search_results = shortest_path_generic(
             &[start],
             &goal_fn,
@@ -532,7 +530,7 @@ mod tests {
         let max_ops_failure = 5;
         let max_ops_success = 100;
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
-        let goal_fn = node_matches_closure(unsafe { RoomXY::unchecked_new(10, 12) }); // This target generally takes ~11 ops to find
+        let goal_fn = goal_exact_node(unsafe { RoomXY::unchecked_new(10, 12) }); // This target generally takes ~11 ops to find
 
         // Failure case
         let search_results = shortest_path_generic(
@@ -577,7 +575,7 @@ mod tests {
         let max_ops_success = 100;
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
-        let goal_fn = node_matches_closure(new_position(room_name, 10, 12)); // This target generally takes ~11 ops to find
+        let goal_fn = goal_exact_node(new_position(room_name, 10, 12)); // This target generally takes ~11 ops to find
 
         // Failure case
         let search_results = shortest_path_generic(
@@ -621,7 +619,7 @@ mod tests {
         let max_cost_failure = 5;
         let max_cost_success = 100;
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
-        let goal_fn = node_matches_closure(unsafe { RoomXY::unchecked_new(10, 12) }); // This target will cost 10 to move to
+        let goal_fn = goal_exact_node(unsafe { RoomXY::unchecked_new(10, 12) }); // This target will cost 10 to move to
 
         // Failure case
         let search_results = shortest_path_generic(
@@ -666,7 +664,7 @@ mod tests {
         let max_cost_success = 100;
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
-        let goal_fn = node_matches_closure(new_position(room_name, 10, 12)); // This target will cost 10 to move to
+        let goal_fn = goal_exact_node(new_position(room_name, 10, 12)); // This target will cost 10 to move to
 
         // Failure case
         let search_results = shortest_path_generic(
