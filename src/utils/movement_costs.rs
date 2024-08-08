@@ -1,6 +1,6 @@
 use screeps::constants::Terrain;
 use screeps::local::{LocalCostMatrix, LocalRoomTerrain};
-use screeps::{Position, RoomXY};
+use screeps::RoomXY;
 
 pub fn get_movement_cost_lcm_from_terrain(
     room_terrain: &LocalRoomTerrain,
@@ -57,4 +57,3 @@ where
         }
     }
 }
-
