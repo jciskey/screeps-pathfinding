@@ -1,4 +1,3 @@
-
 /// Provides methods for pathfinding using the A* algorithm.
 ///
 /// You most likely want to start with one of the following:

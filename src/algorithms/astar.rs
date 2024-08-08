@@ -12,9 +12,9 @@ use std::hash::Hash;
 use screeps::constants::Direction;
 use screeps::{Position, RoomXY};
 
-use crate::common::traits::{AddDirection};
-use crate::utils::heuristics::heuristic_get_range_to_multigoal;
+use crate::common::traits::AddDirection;
 use crate::utils::goals::goal_exact_node_multigoal;
+use crate::utils::heuristics::heuristic_get_range_to_multigoal;
 
 /// A simple trait encapsulating what other traits are needed
 /// for a type to be usable in the A* Algorithm.
@@ -274,10 +274,7 @@ where
     }
 }
 
-fn get_path_from_parents<T: AStarNode>(
-    parents: &HashMap<T, T>,
-    end: T,
-) -> Option<Vec<T>> {
+fn get_path_from_parents<T: AStarNode>(parents: &HashMap<T, T>, end: T) -> Option<Vec<T>> {
     let mut path = Vec::new();
 
     let mut current_pos = end;
@@ -336,11 +333,7 @@ pub fn shortest_path_roomxy_single_goal<G>(
 where
     G: Fn(RoomXY) -> u32,
 {
-    shortest_path_roomxy_multiple_goals(
-        start,
-        &[goal],
-        cost_fn,
-    )
+    shortest_path_roomxy_multiple_goals(start, &[goal], cost_fn)
 }
 
 /// Convenience function for the common use-case of searching
@@ -406,12 +399,7 @@ where
     G: Fn(RoomXY) -> u32,
     F: Fn(RoomXY) -> u32,
 {
-    shortest_path_roomxy_multistart(
-        &[start],
-        goal_fn,
-        cost_fn,
-        heuristic_fn,
-    )
+    shortest_path_roomxy_multistart(&[start], goal_fn, cost_fn, heuristic_fn)
 }
 
 /// Convenience method for running multi-start A* with default costs
@@ -489,11 +477,7 @@ pub fn shortest_path_position_single_goal<G>(
 where
     G: Fn(Position) -> u32,
 {
-    shortest_path_position_multiple_goals(
-        start,
-        &[goal],
-        cost_fn,
-    )
+    shortest_path_position_multiple_goals(start, &[goal], cost_fn)
 }
 
 /// Convenience function for the common use-case of searching
@@ -568,12 +552,7 @@ where
     G: Fn(Position) -> u32,
     F: Fn(Position) -> u32,
 {
-    shortest_path_position_multistart(
-        &[start],
-        goal_fn,
-        cost_fn,
-        heuristic_fn,
-    )
+    shortest_path_position_multistart(&[start], goal_fn, cost_fn, heuristic_fn)
 }
 
 /// Convenience method for running multi-start A* with default costs
@@ -605,8 +584,8 @@ where
 mod tests {
     use super::*;
 
-    use screeps::local::{Position, RoomCoordinate, RoomXY};
     use crate::utils::heuristics::heuristic_get_range_to;
+    use screeps::local::{Position, RoomCoordinate, RoomXY};
 
     // Helper Functions
 
@@ -654,8 +633,14 @@ mod tests {
     fn simple_linear_path_roomxy() {
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
         let goal = unsafe { RoomXY::unchecked_new(10, 12) };
-        let search_results =
-            shortest_path_generic(&[start], &is_goal_fn(goal), all_tiles_are_plains_costs, heuristic_get_range_to(goal), 2000, 2000);
+        let search_results = shortest_path_generic(
+            &[start],
+            &is_goal_fn(goal),
+            all_tiles_are_plains_costs,
+            heuristic_get_range_to(goal),
+            2000,
+            2000,
+        );
 
         assert_eq!(search_results.incomplete(), false);
         assert_eq!(search_results.cost(), 2);
@@ -685,8 +670,14 @@ mod tests {
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
         let goal = new_position(room_name, 10, 12);
-        let search_results =
-            shortest_path_generic(&[start], &is_goal_fn(goal), all_tiles_are_plains_costs, heuristic_get_range_to(goal), 2000, 2000);
+        let search_results = shortest_path_generic(
+            &[start],
+            &is_goal_fn(goal),
+            all_tiles_are_plains_costs,
+            heuristic_get_range_to(goal),
+            2000,
+            2000,
+        );
 
         assert_eq!(search_results.incomplete(), false);
         assert_eq!(search_results.cost(), 2);
@@ -715,8 +706,14 @@ mod tests {
     fn unreachable_target_roomxy() {
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
         let goal = unsafe { RoomXY::unchecked_new(10, 12) };
-        let search_results =
-            shortest_path_generic(&[start], &is_goal_fn(goal), roomxy_unreachable_tile_costs, heuristic_get_range_to(goal), 2000, 2000);
+        let search_results = shortest_path_generic(
+            &[start],
+            &is_goal_fn(goal),
+            roomxy_unreachable_tile_costs,
+            heuristic_get_range_to(goal),
+            2000,
+            2000,
+        );
 
         println!("{:?}", search_results);
 
@@ -730,8 +727,14 @@ mod tests {
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
         let goal = new_position(room_name, 10, 12);
-        let search_results =
-            shortest_path_generic(&[start], &is_goal_fn(goal), position_unreachable_tile_costs, heuristic_get_range_to(goal), 2000, 2000);
+        let search_results = shortest_path_generic(
+            &[start],
+            &is_goal_fn(goal),
+            position_unreachable_tile_costs,
+            heuristic_get_range_to(goal),
+            2000,
+            2000,
+        );
 
         println!("{:?}", search_results);
 

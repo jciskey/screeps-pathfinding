@@ -249,10 +249,7 @@ where
     }
 }
 
-fn get_path_from_parents<T: DijkstraNode>(
-    parents: &HashMap<T, T>,
-    end: T,
-) -> Option<Vec<T>> {
+fn get_path_from_parents<T: DijkstraNode>(parents: &HashMap<T, T>, end: T) -> Option<Vec<T>> {
     let mut path = Vec::new();
 
     let mut current_pos = end;
@@ -273,23 +270,19 @@ fn get_path_from_parents<T: DijkstraNode>(
 pub fn shortest_path_roomxy<P, G>(
     start: RoomXY,
     goal_fn: &P,
-    cost_fn: G
+    cost_fn: G,
 ) -> DijkstraSearchResults<RoomXY>
 where
     P: Fn(RoomXY) -> bool,
     G: Fn(RoomXY) -> u32,
 {
-    shortest_path_roomxy_multistart(
-        &[start],
-        goal_fn,
-        cost_fn,
-    )
+    shortest_path_roomxy_multistart(&[start], goal_fn, cost_fn)
 }
 
 pub fn shortest_path_roomxy_multistart<P, G>(
     start_nodes: &[RoomXY],
     goal_fn: &P,
-    cost_fn: G
+    cost_fn: G,
 ) -> DijkstraSearchResults<RoomXY>
 where
     P: Fn(RoomXY) -> bool,
@@ -311,23 +304,19 @@ where
 pub fn shortest_path_position<P, G>(
     start: Position,
     goal_fn: &P,
-    cost_fn: G
+    cost_fn: G,
 ) -> DijkstraSearchResults<Position>
 where
     P: Fn(Position) -> bool,
     G: Fn(Position) -> u32,
 {
-    shortest_path_position_multistart(
-        &[start],
-        goal_fn,
-        cost_fn,
-    )
+    shortest_path_position_multistart(&[start], goal_fn, cost_fn)
 }
 
 pub fn shortest_path_position_multistart<P, G>(
     start_nodes: &[Position],
     goal_fn: &P,
-    cost_fn: G
+    cost_fn: G,
 ) -> DijkstraSearchResults<Position>
 where
     P: Fn(Position) -> bool,
@@ -349,9 +338,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::goals::goal_exact_node;
     use screeps::constants::Direction;
     use screeps::local::{Position, RoomCoordinate, RoomXY};
-    use crate::utils::goals::goal_exact_node;
 
     // Helper Functions
 

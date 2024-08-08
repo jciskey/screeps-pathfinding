@@ -1,4 +1,3 @@
-
 /// Provides common definitions used across the crate
 pub mod common;
 

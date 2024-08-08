@@ -1,4 +1,3 @@
-
 /// Helper methods for generating neighbor node functions.
 pub mod neighbors;
 

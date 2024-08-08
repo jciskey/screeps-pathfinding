@@ -1,7 +1,6 @@
-
 use screeps::{Direction, Position, RoomXY};
 
-/// Trait that encapsulates taking a [screeps::Direction] constant and 
+/// Trait that encapsulates taking a [screeps::Direction] constant and
 /// producing a new node from it.
 pub trait AddDirection {
     fn checked_add_direction(self, direction: Direction) -> Option<Self>

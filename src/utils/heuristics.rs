@@ -1,4 +1,3 @@
-
 use crate::common::traits::GetRangeTo;
 
 /// Helper function to create a heuristic cost function closure for a single goal node.
@@ -51,6 +50,14 @@ pub fn heuristic_get_range_to<T: GetRangeTo + Copy + 'static>(goal: T) -> impl F
 ///     cost_fn,
 ///     &heuristic_get_range_to_multigoal(goals),
 /// );
-pub fn heuristic_get_range_to_multigoal<T: GetRangeTo + Copy>(goals: &[T]) -> impl Fn(T) -> u32 + '_ {
-    |node: T| goals.into_iter().map(|g| node.get_range_to(*g)).min().unwrap_or(0)
+pub fn heuristic_get_range_to_multigoal<T: GetRangeTo + Copy>(
+    goals: &[T],
+) -> impl Fn(T) -> u32 + '_ {
+    |node: T| {
+        goals
+            .into_iter()
+            .map(|g| node.get_range_to(*g))
+            .min()
+            .unwrap_or(0)
+    }
 }
