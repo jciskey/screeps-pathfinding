@@ -105,6 +105,7 @@ fn check_directions<T: AStarNode, G, F>(
     heuristic_fn: F,
     heap: &mut BinaryHeap<State<T>>,
     parents: &mut HashMap<T, T>,
+    flatten_path_heuristic: bool,
 ) where
     G: Fn(T) -> u32,
     F: Fn(T) -> u32,
@@ -126,7 +127,25 @@ fn check_directions<T: AStarNode, G, F>(
             }
 
             // let f_score = g_score.saturating_add(check_pos.get_range_heuristic(goal));
-            let f_score = g_score.saturating_add(heuristic_fn(check_pos));
+            let raw_h_score = heuristic_fn(check_pos);
+            let h_score = if flatten_path_heuristic {
+                // In order to flatten the paths produced, i.e. preferring horizontal movement
+                // over diagonal movement for the same path cost, we scale up all heuristic
+                // values and then add a very slight cost increase to diagonal moves over
+                // horizontal moves.
+                let scaled_h_score = raw_h_score.saturating_mul(2);
+                let tweaked_h_score = if direction.is_diagonal() {
+                     scaled_h_score.saturating_add(1)
+                }
+                else {
+                    scaled_h_score
+                };
+                tweaked_h_score
+            }
+            else {
+                raw_h_score
+            };
+            let f_score = g_score.saturating_add(h_score);
 
             heap.push(State {
                 g_score,
@@ -154,6 +173,7 @@ pub fn shortest_path_generic<T: AStarNode, P, G, F>(
     heuristic_fn: F,
     max_ops: u32,
     max_cost: u32,
+    flatten_path_heuristic: bool,
 ) -> AStarSearchResults<T>
 where
     P: Fn(T) -> bool,
@@ -261,6 +281,7 @@ where
             &heuristic_fn,
             &mut heap,
             &mut parents,
+            flatten_path_heuristic,
         );
     }
 
@@ -314,6 +335,7 @@ fn get_path_from_parents<T: AStarNode>(parents: &HashMap<T, T>, end: T) -> Optio
 ///     start,
 ///     goal,
 ///     costs_fn,
+///     true,
 /// );
 ///
 /// if !search_results.incomplete() {
@@ -329,11 +351,12 @@ pub fn shortest_path_roomxy_single_goal<G>(
     start: RoomXY,
     goal: RoomXY,
     cost_fn: G,
+    flatten_path_heuristic: bool,
 ) -> AStarSearchResults<RoomXY>
 where
     G: Fn(RoomXY) -> u32,
 {
-    shortest_path_roomxy_multiple_goals(start, &[goal], cost_fn)
+    shortest_path_roomxy_multiple_goals(start, &[goal], cost_fn, flatten_path_heuristic)
 }
 
 /// Convenience function for the common use-case of searching
@@ -359,6 +382,7 @@ where
 ///     start,
 ///     &[goal_a, goal_b],
 ///     costs_fn,
+///     true,
 /// );
 ///
 /// if !search_results.incomplete() {
@@ -374,6 +398,7 @@ pub fn shortest_path_roomxy_multiple_goals<G>(
     start: RoomXY,
     goals: &[RoomXY],
     cost_fn: G,
+    flatten_path_heuristic: bool,
 ) -> AStarSearchResults<RoomXY>
 where
     G: Fn(RoomXY) -> u32,
@@ -383,6 +408,7 @@ where
         &goal_exact_node_multigoal(goals),
         cost_fn,
         &heuristic_get_range_to_multigoal(goals),
+        flatten_path_heuristic,
     )
 }
 
@@ -393,13 +419,14 @@ pub fn shortest_path_roomxy<P, G, F>(
     goal_fn: &P,
     cost_fn: G,
     heuristic_fn: &F,
+    flatten_path_heuristic: bool,
 ) -> AStarSearchResults<RoomXY>
 where
     P: Fn(RoomXY) -> bool,
     G: Fn(RoomXY) -> u32,
     F: Fn(RoomXY) -> u32,
 {
-    shortest_path_roomxy_multistart(&[start], goal_fn, cost_fn, heuristic_fn)
+    shortest_path_roomxy_multistart(&[start], goal_fn, cost_fn, heuristic_fn, flatten_path_heuristic)
 }
 
 /// Convenience method for running multi-start A* with default costs
@@ -409,6 +436,7 @@ pub fn shortest_path_roomxy_multistart<P, G, F>(
     goal_fn: &P,
     cost_fn: G,
     heuristic_fn: &F,
+    flatten_path_heuristic: bool,
 ) -> AStarSearchResults<RoomXY>
 where
     P: Fn(RoomXY) -> bool,
@@ -424,6 +452,7 @@ where
         heuristic_fn,
         max_ops,
         max_cost,
+        flatten_path_heuristic,
     )
 }
 
@@ -458,6 +487,7 @@ where
 ///     start,
 ///     goal,
 ///     costs_fn,
+///     true,
 /// );
 ///
 /// if !search_results.incomplete() {
@@ -473,11 +503,12 @@ pub fn shortest_path_position_single_goal<G>(
     start: Position,
     goal: Position,
     cost_fn: G,
+    flatten_path_heuristic: bool,
 ) -> AStarSearchResults<Position>
 where
     G: Fn(Position) -> u32,
 {
-    shortest_path_position_multiple_goals(start, &[goal], cost_fn)
+    shortest_path_position_multiple_goals(start, &[goal], cost_fn, flatten_path_heuristic)
 }
 
 /// Convenience function for the common use-case of searching
@@ -512,6 +543,7 @@ where
 ///     start,
 ///     &[goal_a, goal_b],
 ///     costs_fn,
+///     true,
 /// );
 ///
 /// if !search_results.incomplete() {
@@ -527,6 +559,7 @@ pub fn shortest_path_position_multiple_goals<G>(
     start: Position,
     goals: &[Position],
     cost_fn: G,
+    flatten_path_heuristic: bool,
 ) -> AStarSearchResults<Position>
 where
     G: Fn(Position) -> u32,
@@ -536,6 +569,7 @@ where
         &goal_exact_node_multigoal(goals),
         cost_fn,
         &heuristic_get_range_to_multigoal(goals),
+        flatten_path_heuristic,
     )
 }
 
@@ -546,13 +580,14 @@ pub fn shortest_path_position<P, G, F>(
     goal_fn: &P,
     cost_fn: G,
     heuristic_fn: &F,
+    flatten_path_heuristic: bool,
 ) -> AStarSearchResults<Position>
 where
     P: Fn(Position) -> bool,
     G: Fn(Position) -> u32,
     F: Fn(Position) -> u32,
 {
-    shortest_path_position_multistart(&[start], goal_fn, cost_fn, heuristic_fn)
+    shortest_path_position_multistart(&[start], goal_fn, cost_fn, heuristic_fn, flatten_path_heuristic)
 }
 
 /// Convenience method for running multi-start A* with default costs
@@ -562,6 +597,7 @@ pub fn shortest_path_position_multistart<P, G, F>(
     goal_fn: &P,
     cost_fn: G,
     heuristic_fn: &F,
+    flatten_path_heuristic: bool,
 ) -> AStarSearchResults<Position>
 where
     P: Fn(Position) -> bool,
@@ -577,6 +613,7 @@ where
         heuristic_fn,
         max_ops,
         max_cost,
+        flatten_path_heuristic,
     )
 }
 
@@ -640,6 +677,7 @@ mod tests {
             heuristic_get_range_to(goal),
             2000,
             2000,
+            true,
         );
 
         assert_eq!(search_results.incomplete(), false);
@@ -677,6 +715,7 @@ mod tests {
             heuristic_get_range_to(goal),
             2000,
             2000,
+            true,
         );
 
         assert_eq!(search_results.incomplete(), false);
@@ -713,6 +752,7 @@ mod tests {
             heuristic_get_range_to(goal),
             2000,
             2000,
+            true,
         );
 
         println!("{:?}", search_results);
@@ -734,6 +774,7 @@ mod tests {
             heuristic_get_range_to(goal),
             2000,
             2000,
+            true,
         );
 
         println!("{:?}", search_results);
@@ -758,6 +799,7 @@ mod tests {
             heuristic_get_range_to(goal),
             max_ops_failure,
             2000,
+            true,
         );
 
         assert_eq!(search_results.incomplete(), true);
@@ -772,6 +814,7 @@ mod tests {
             heuristic_get_range_to(goal),
             max_ops_success,
             2000,
+            true,
         );
 
         assert_eq!(search_results.incomplete(), false);
@@ -799,6 +842,7 @@ mod tests {
             heuristic_get_range_to(goal),
             max_ops_failure,
             2000,
+            true,
         );
 
         assert_eq!(search_results.incomplete(), true);
@@ -813,6 +857,7 @@ mod tests {
             heuristic_get_range_to(goal),
             max_ops_success,
             2000,
+            true,
         );
 
         assert_eq!(search_results.incomplete(), false);
@@ -839,6 +884,7 @@ mod tests {
             heuristic_get_range_to(goal),
             2000,
             max_cost_failure,
+            true,
         );
 
         assert_eq!(search_results.incomplete(), true);
@@ -852,6 +898,7 @@ mod tests {
             heuristic_get_range_to(goal),
             2000,
             max_cost_success,
+            true,
         );
 
         assert_eq!(search_results.incomplete(), false);
@@ -879,6 +926,7 @@ mod tests {
             heuristic_get_range_to(goal),
             2000,
             max_cost_failure,
+            true,
         );
         println!("{:?}", search_results);
         assert_eq!(search_results.incomplete(), true);
@@ -892,6 +940,7 @@ mod tests {
             heuristic_get_range_to(goal),
             2000,
             max_cost_success,
+            true,
         );
 
         assert_eq!(search_results.incomplete(), false);

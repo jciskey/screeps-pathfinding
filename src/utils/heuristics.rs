@@ -21,6 +21,7 @@ use crate::common::traits::GetRangeTo;
 ///     &goal_exact_node(goal),
 ///     cost_fn,
 ///     &heuristic_get_range_to(goal),
+///     true,
 /// );
 pub fn heuristic_get_range_to<T: GetRangeTo + Copy + 'static>(goal: T) -> impl Fn(T) -> u32 {
     move |node: T| node.get_range_to(goal)
@@ -49,6 +50,7 @@ pub fn heuristic_get_range_to<T: GetRangeTo + Copy + 'static>(goal: T) -> impl F
 ///     &goal_exact_node_multigoal(goals),
 ///     cost_fn,
 ///     &heuristic_get_range_to_multigoal(goals),
+///     true,
 /// );
 pub fn heuristic_get_range_to_multigoal<T: GetRangeTo + Copy>(
     goals: &[T],

@@ -19,6 +19,7 @@ use crate::common::traits::GetRangeTo;
 ///     &goal_exact_node(goal),
 ///     cost_fn,
 ///     &heuristic_get_range_to(goal),
+///     true,
 /// );
 pub fn goal_exact_node<T: std::cmp::PartialEq + 'static>(goal: T) -> impl Fn(T) -> bool {
     move |node: T| node == goal
@@ -45,6 +46,7 @@ pub fn goal_exact_node<T: std::cmp::PartialEq + 'static>(goal: T) -> impl Fn(T) 
 ///     &goal_exact_node_multigoal(goals),
 ///     cost_fn,
 ///     &heuristic_get_range_to_multigoal(goals),
+///     true,
 /// );
 pub fn goal_exact_node_multigoal<T: std::cmp::PartialEq>(goals: &[T]) -> impl Fn(T) -> bool + '_ {
     |node: T| goals.iter().any(|g| node == *g)
@@ -70,6 +72,7 @@ pub fn goal_exact_node_multigoal<T: std::cmp::PartialEq>(goals: &[T]) -> impl Fn
 ///     &goal_range_to_node(goal, 3),
 ///     cost_fn,
 ///     &heuristic_get_range_to(goal),
+///     true,
 /// );
 pub fn goal_range_to_node<T: GetRangeTo + Copy + 'static>(
     goal: T,
@@ -100,6 +103,7 @@ pub fn goal_range_to_node<T: GetRangeTo + Copy + 'static>(
 ///     &goal_range_to_node_multigoal(goals, 3),
 ///     cost_fn,
 ///     &heuristic_get_range_to_multigoal(goals),
+///     true,
 /// );
 pub fn goal_range_to_node_multigoal<T: GetRangeTo + Copy>(
     goals: &[T],
