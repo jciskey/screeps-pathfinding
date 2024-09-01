@@ -156,6 +156,7 @@ fn check_directions<T: AStarNode, G, F>(
 }
 
 /// Highly-generic implementation of A* search algorithm.
+///
 /// Allows multiple starting nodes, a generic goal function,
 /// generic cost and heuristic functions, control over
 /// the maximum operations performed while searching,
