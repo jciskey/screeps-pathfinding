@@ -135,14 +135,12 @@ fn check_directions<T: AStarNode, G, F>(
                 // horizontal moves.
                 let scaled_h_score = raw_h_score.saturating_mul(2);
                 let tweaked_h_score = if direction.is_diagonal() {
-                     scaled_h_score.saturating_add(1)
-                }
-                else {
+                    scaled_h_score.saturating_add(1)
+                } else {
                     scaled_h_score
                 };
                 tweaked_h_score
-            }
-            else {
+            } else {
                 raw_h_score
             };
             let f_score = g_score.saturating_add(h_score);
@@ -426,7 +424,13 @@ where
     G: Fn(RoomXY) -> u32,
     F: Fn(RoomXY) -> u32,
 {
-    shortest_path_roomxy_multistart(&[start], goal_fn, cost_fn, heuristic_fn, flatten_path_heuristic)
+    shortest_path_roomxy_multistart(
+        &[start],
+        goal_fn,
+        cost_fn,
+        heuristic_fn,
+        flatten_path_heuristic,
+    )
 }
 
 /// Convenience method for running multi-start A* with default costs
@@ -587,7 +591,13 @@ where
     G: Fn(Position) -> u32,
     F: Fn(Position) -> u32,
 {
-    shortest_path_position_multistart(&[start], goal_fn, cost_fn, heuristic_fn, flatten_path_heuristic)
+    shortest_path_position_multistart(
+        &[start],
+        goal_fn,
+        cost_fn,
+        heuristic_fn,
+        flatten_path_heuristic,
+    )
 }
 
 /// Convenience method for running multi-start A* with default costs

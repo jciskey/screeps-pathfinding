@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 
 use screeps::{LocalRoomTerrain, RoomName};
@@ -8,7 +7,7 @@ use screeps::{LocalRoomTerrain, RoomName};
 /// from game state and caching it before returning it.
 #[derive(Debug, Clone)]
 pub struct TerrainCache {
-    cache: HashMap<RoomName, LocalRoomTerrain>
+    cache: HashMap<RoomName, LocalRoomTerrain>,
 }
 
 impl TerrainCache {
@@ -56,5 +55,4 @@ impl TerrainCache {
     pub fn update_cached_terrain(&mut self, room_name: RoomName, local_terrain: LocalRoomTerrain) {
         let _ = self.cache.insert(room_name, local_terrain);
     }
-
 }

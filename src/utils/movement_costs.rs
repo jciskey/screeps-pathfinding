@@ -1,6 +1,5 @@
-
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 use screeps::constants::Terrain;
 use screeps::local::{LocalCostMatrix, LocalRoomTerrain};
@@ -91,9 +90,13 @@ pub fn get_lcm_generation_closure_from_terrain_cache(
 }
 
 /// Utility function to create a movement costs closure from an LCM cache.
-pub fn movement_costs_from_lcm_cache<'a, 'b, F: Clone + Fn(&RoomName) -> LocalCostMatrix + 'a + 'b>(
+pub fn movement_costs_from_lcm_cache<
+    'a,
+    'b,
+    F: Clone + Fn(&RoomName) -> LocalCostMatrix + 'a + 'b,
+>(
     lcm_cache_ref: &'b RefCell<LCMCache>,
-    generator_fn: F
+    generator_fn: F,
 ) -> impl Fn(Position) -> u32 + 'b {
     move |pos: Position| {
         let mut lcm_cache = lcm_cache_ref.borrow_mut();

@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 
 use screeps::{LocalCostMatrix, RoomName};
@@ -32,7 +31,11 @@ impl LCMCache {
     }
 
     /// Returns the room LCM, generating and caching it if it's not already cached.
-    pub fn get_lcm(&mut self, room_name: &RoomName, generator_fn: impl FnOnce(&RoomName) -> LocalCostMatrix) -> &LocalCostMatrix {
+    pub fn get_lcm(
+        &mut self,
+        room_name: &RoomName,
+        generator_fn: impl FnOnce(&RoomName) -> LocalCostMatrix,
+    ) -> &LocalCostMatrix {
         if self.cache.get(room_name).is_none() {
             // We don't have a cached copy of the LCM, generate and cache it
             let lcm = generator_fn(room_name);
@@ -49,5 +52,4 @@ impl LCMCache {
     pub fn update_cached_lcm(&mut self, room_name: RoomName, lcm: LocalCostMatrix) {
         let _ = self.cache.insert(room_name, lcm);
     }
-
 }
