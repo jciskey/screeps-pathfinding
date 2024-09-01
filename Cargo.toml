@@ -23,7 +23,8 @@ name = "screeps_pathfinding"
 all-features = true
 
 [dependencies]
-screeps-game-api = "0.21"
+screeps-game-api = "0.22"
+serde = "1.0.209"
 
 [features]
 default = []

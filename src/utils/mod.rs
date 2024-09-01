@@ -9,3 +9,9 @@ pub mod heuristics;
 
 /// Helper methods for generating goal functions.
 pub mod goals;
+
+/// Provides caching structures and functions.
+pub mod cache;
+
+/// Provides structures and functions for moving along paths.
+pub mod pathing;

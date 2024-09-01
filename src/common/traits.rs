@@ -28,7 +28,7 @@ pub trait GetRangeTo {
 
 impl GetRangeTo for RoomXY {
     fn get_range_to(self, other: Self) -> u32 {
-        self.get_range_to(other)
+        self.get_range_to(other).into()
     }
 }
 

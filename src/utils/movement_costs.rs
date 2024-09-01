@@ -1,6 +1,12 @@
+
+use std::rc::Rc;
+use std::cell::RefCell;
+
 use screeps::constants::Terrain;
 use screeps::local::{LocalCostMatrix, LocalRoomTerrain};
-use screeps::RoomXY;
+use screeps::{Position, RoomName, RoomXY};
+
+use super::cache::{LCMCache, TerrainCache};
 
 pub fn get_movement_cost_lcm_from_terrain(
     room_terrain: &LocalRoomTerrain,
@@ -51,6 +57,48 @@ where
 {
     |xy| {
         let value = lcm.get(xy.into());
+        match value {
+            u8::MAX => u32::MAX,
+            _ => value as u32,
+        }
+    }
+}
+
+/// Utility function to create an LCM generation closure from a terrain cache and terrain costs.
+pub fn get_lcm_generation_closure_from_terrain_cache(
+    terrain_cache_ref: Rc<RefCell<TerrainCache>>,
+    plain_cost: u8,
+    swamp_cost: u8,
+    default_cost: u8,
+) -> impl Clone + Fn(&RoomName) -> LocalCostMatrix {
+    move |room_name: &RoomName| {
+        let mut cm = LocalCostMatrix::new_with_value(default_cost);
+
+        if let Ok(mut terrain_cache) = terrain_cache_ref.try_borrow_mut() {
+            if let Some(room_terrain) = terrain_cache.get_terrain(room_name) {
+                for (xy, val) in cm.iter_mut() {
+                    *val = match room_terrain.get_xy(xy) {
+                        Terrain::Wall => u8::MAX,
+                        Terrain::Plain => plain_cost,
+                        Terrain::Swamp => swamp_cost,
+                    }
+                }
+            }
+        }
+
+        cm
+    }
+}
+
+/// Utility function to create a movement costs closure from an LCM cache.
+pub fn movement_costs_from_lcm_cache<'a, 'b, F: Clone + Fn(&RoomName) -> LocalCostMatrix + 'a + 'b>(
+    lcm_cache_ref: &'b RefCell<LCMCache>,
+    generator_fn: F
+) -> impl Fn(Position) -> u32 + 'b {
+    move |pos: Position| {
+        let mut lcm_cache = lcm_cache_ref.borrow_mut();
+        let lcm = lcm_cache.get_lcm(&pos.room_name(), generator_fn.clone());
+        let value = lcm.get(pos.into());
         match value {
             u8::MAX => u32::MAX,
             _ => value as u32,
