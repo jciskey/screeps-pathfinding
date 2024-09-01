@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+## [v0.1.2]
+
+### Added
+
 - Added caching structures for terrain (`TerrainCache`), cost matrices (`LCMCache`), and paths (`PathCache`).
 - Added utility helper methods for using terrain and cost matrix caches in pathfinding algorithms.
 
