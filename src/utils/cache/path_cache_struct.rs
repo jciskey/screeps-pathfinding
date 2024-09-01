@@ -14,6 +14,15 @@ where
     cache: HashMap<K, Vec<Position>>,
 }
 
+impl<K> Default for PathCache<K>
+where
+    K: PartialEq + Eq + Hash + Clone,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<K> PathCache<K>
 where
     K: PartialEq + Eq + Hash + Clone,

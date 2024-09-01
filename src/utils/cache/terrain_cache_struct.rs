@@ -10,6 +10,12 @@ pub struct TerrainCache {
     cache: HashMap<RoomName, LocalRoomTerrain>,
 }
 
+impl Default for TerrainCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TerrainCache {
     /// Initializes a new, empty terrain cache.
     pub fn new() -> Self {
@@ -36,7 +42,7 @@ impl TerrainCache {
     ///
     /// Note: This method can, but might not, pull from the game state, which requires crossing the WASM boundary.
     pub fn get_terrain(&mut self, room_name: &RoomName) -> Option<&LocalRoomTerrain> {
-        if self.cache.get(room_name).is_none() {
+        if !self.is_terrain_cached(room_name) {
             // We don't have a cached copy of the terrain, pull it and cache it
             let js_terrain_opt = screeps::objects::RoomTerrain::new(*room_name);
             if let Some(js_terrain) = js_terrain_opt {
@@ -54,5 +60,10 @@ impl TerrainCache {
     /// room terrain you might already have available.
     pub fn update_cached_terrain(&mut self, room_name: RoomName, local_terrain: LocalRoomTerrain) {
         let _ = self.cache.insert(room_name, local_terrain);
+    }
+
+    /// Removes the terrain cached for a specific room.
+    pub fn remove_cached_terrain(&mut self, room_name: &RoomName) {
+        self.cache.remove(room_name);
     }
 }

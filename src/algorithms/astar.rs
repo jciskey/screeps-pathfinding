@@ -97,6 +97,7 @@ where
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn check_directions<T: AStarNode, G, F>(
     start: T,
     g_score: u32,
@@ -134,12 +135,11 @@ fn check_directions<T: AStarNode, G, F>(
                 // values and then add a very slight cost increase to diagonal moves over
                 // horizontal moves.
                 let scaled_h_score = raw_h_score.saturating_mul(2);
-                let tweaked_h_score = if direction.is_diagonal() {
+                if direction.is_diagonal() {
                     scaled_h_score.saturating_add(1)
                 } else {
                     scaled_h_score
-                };
-                tweaked_h_score
+                }
             } else {
                 raw_h_score
             };

@@ -13,7 +13,7 @@ pub fn get_next_step_direction_in_vec_pos(
     current_pos: &Position,
     path: &[Position],
 ) -> Option<Direction> {
-    if path.len() == 0 {
+    if path.is_empty() {
         return None;
     }
 

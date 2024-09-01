@@ -10,6 +10,12 @@ pub struct LCMCache {
     cache: HashMap<RoomName, LocalCostMatrix>,
 }
 
+impl Default for LCMCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LCMCache {
     /// Initializes a new, empty LCM cache.
     pub fn new() -> Self {
@@ -36,7 +42,7 @@ impl LCMCache {
         room_name: &RoomName,
         generator_fn: impl FnOnce(&RoomName) -> LocalCostMatrix,
     ) -> &LocalCostMatrix {
-        if self.cache.get(room_name).is_none() {
+        if !self.is_lcm_cached(room_name) {
             // We don't have a cached copy of the LCM, generate and cache it
             let lcm = generator_fn(room_name);
             let _ = self.cache.insert(*room_name, lcm);
@@ -51,5 +57,10 @@ impl LCMCache {
     /// room LCM data you might already have available.
     pub fn update_cached_lcm(&mut self, room_name: RoomName, lcm: LocalCostMatrix) {
         let _ = self.cache.insert(room_name, lcm);
+    }
+
+    /// Removes the LCM cached for a specific room.
+    pub fn remove_cached_lcm(&mut self, room_name: &RoomName) {
+        self.cache.remove(room_name);
     }
 }
