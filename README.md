@@ -17,6 +17,12 @@ using more advanced algorithms than just the Jump-Point Search that Pathfinder
 implements, which would be beneficial for pathfinding with moving goals and
 starting positions (such as during combat).
 
+For convenience in actually using the library, it also includes utility functions
+for common pathfinding use-cases, as well as caching structures for terrain,
+cost matrices, and paths. The intent is not to provide a one-size-fits-all drop-in
+navigation replacement, but instead to provide flexible building blocks that can
+be used to build the appropriate solution for an individual Screeps bot.
+
 ## Current Algorithms
 
 - Dijkstra's Shortest Path
