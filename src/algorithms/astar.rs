@@ -9,6 +9,8 @@ use std::collections::{
 };
 use std::hash::Hash;
 
+use num::CheckedAdd;
+
 use screeps::constants::Direction;
 use screeps::{Position, RoomXY};
 
@@ -18,28 +20,51 @@ use crate::utils::heuristics::heuristic_get_range_to_multigoal;
 
 /// A simple trait encapsulating what other traits are needed
 /// for a type to be usable in the A* Algorithm.
-pub trait AStarNode: Eq + Hash + Copy + Ord + AddDirection {}
-impl<T> AStarNode for T where T: Eq + Hash + Copy + Ord + AddDirection {}
+pub trait AStarNode: Eq + Hash + Copy + Ord {}
+impl<T> AStarNode for T where T: Eq + Hash + Copy + Ord {}
+
+/// Extends the AStarNode trait to also include the requirement for adding a direction, which is
+/// sufficient to define the 8-connected grid that we use in Screeps.
+pub trait AStarGridNode: AStarNode + AddDirection {}
+impl<T> AStarGridNode for T where T: AStarNode + AddDirection {}
+
+/// Helper trait for defining how we use generic costs in A*, allowing users to bring their own
+/// costs without being locked into e.g. u32.
+pub trait AStarCost:
+    std::ops::Add<Self, Output = Self> +
+    CheckedAdd +
+    Copy +
+    Eq +
+    Sized +
+    std::cmp::Ord {}
+impl<T> AStarCost for T where T:
+    std::ops::Add<Self, Output = Self> +
+    CheckedAdd +
+    Copy +
+    Eq +
+    Sized +
+    std::cmp::Ord {}
 
 #[derive(Debug)]
-pub struct AStarSearchResults<T>
+pub struct AStarSearchResults<T, O>
 where
     T: AStarNode,
+    O: AStarCost,
 {
     ops_used: u32,
-    cost: u32,
+    cost: Option<O>,
     incomplete: bool,
     path: Vec<T>,
 }
 
-impl<T: AStarNode> AStarSearchResults<T> {
+impl<T: AStarNode, O: AStarCost> AStarSearchResults<T, O> {
     /// The number of expand node operations used
     pub fn ops(&self) -> u32 {
         self.ops_used
     }
 
     /// The movement cost of the result path
-    pub fn cost(&self) -> u32 {
+    pub fn cost(&self) -> Option<O> {
         self.cost
     }
 
@@ -54,15 +79,63 @@ impl<T: AStarNode> AStarSearchResults<T> {
     }
 }
 
+
 #[derive(Copy, Clone, Eq, PartialEq)]
-struct State<T>
+struct State<T, O>
 where
     T: Ord,
+    O: AStarCost,
 {
     /// cost to reach this position (the g_score in A* terminology)
-    g_score: u32,
+    g_score: Option<O>,
     /// f_score is the sum of the known cost to reach this position (the g_score) plus the estimated cost remaining from this position in the best possible case
-    f_score: u32,
+    f_score: Option<O>,
+    /// the actual position
+    position: T,
+}
+
+// The priority queue depends on `Ord`.
+// Explicitly implement the trait so the queue becomes a min-heap
+// instead of a max-heap.
+impl<T, O> Ord for State<T, O>
+where
+    T: Ord,
+    O: AStarCost,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Notice that we flip the ordering on costs.
+        // In case of a tie we compare positions - this step is necessary
+        // to make implementations of `PartialEq` and `Ord` consistent.
+        match (other.f_score, self.f_score) {
+            (None, None) => self.position.cmp(&other.position),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (Some(a), Some(b)) => a.cmp(&b).then_with(|| self.position.cmp(&other.position))
+        }
+    }
+}
+
+// `PartialOrd` needs to be implemented as well.
+impl<T, O> PartialOrd for State<T, O>
+where
+    T: Ord,
+    O: AStarCost,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+struct GridState<T, O>
+where
+    T: Ord,
+    O: AStarCost,
+{
+    /// cost to reach this position (the g_score in A* terminology)
+    g_score: Option<O>,
+    /// f_score is the sum of the known cost to reach this position (the g_score) plus the estimated cost remaining from this position in the best possible case
+    f_score: Option<O>,
     /// track the direction this entry was opened from, so that we're able to check
     /// only optimal moves (3 or 5 positions instead of all 8)
     open_direction: Option<Direction>,
@@ -72,90 +145,163 @@ where
 // The priority queue depends on `Ord`.
 // Explicitly implement the trait so the queue becomes a min-heap
 // instead of a max-heap.
-impl<T> Ord for State<T>
+impl<T, O> Ord for GridState<T, O>
 where
     T: Ord,
+    O: AStarCost,
 {
     fn cmp(&self, other: &Self) -> Ordering {
         // Notice that we flip the ordering on costs.
         // In case of a tie we compare positions - this step is necessary
         // to make implementations of `PartialEq` and `Ord` consistent.
-        other
-            .f_score
-            .cmp(&self.f_score)
-            .then_with(|| self.position.cmp(&other.position))
+        match (other.f_score, self.f_score) {
+            (None, None) => self.position.cmp(&other.position),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (Some(a), Some(b)) => a.cmp(&b).then_with(|| self.position.cmp(&other.position))
+        }
     }
 }
 
 // `PartialOrd` needs to be implemented as well.
-impl<T> PartialOrd for State<T>
+impl<T, O> PartialOrd for GridState<T, O>
 where
     T: Ord,
+    O: AStarCost,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
+/// Handles node expansion into the open set.
+/// 
+/// `start` is the node that is currently being expanded
+/// `g_score` is the cost to get to the `start` node so far during our search
+/// `neighbors` is the new nodes being considered for addition to the open set
+/// `cost_fn` is a function that takes a pair of nodes and returns the cost to move from the first node to the second node, or None if the transition is invalid
+/// `heuristic_fn` is a function that takes a node and returns the estimated cost to move from that node to the final goal node
+/// `heap` this is the open set of nodes that are candidates for exploration/expansion
+/// `parents` this is a lookup table from nodes to their parents
 #[allow(clippy::too_many_arguments)]
-fn check_directions<T: AStarNode, G, F>(
+fn expand_neighbors<T: AStarNode, G, F, O>(
     start: T,
-    g_score: u32,
-    directions: &[Direction],
+    g_score: O,
+    neighbors: &[T],
     cost_fn: G,
     heuristic_fn: F,
-    heap: &mut BinaryHeap<State<T>>,
+    heap: &mut BinaryHeap<State<T, O>>,
     parents: &mut HashMap<T, T>,
-    flatten_path_heuristic: bool,
 ) where
-    G: Fn(T) -> u32,
-    F: Fn(T) -> u32,
+    G: Fn(T, T) -> Option<O>,
+    F: Fn(T) -> O,
+    O: AStarCost,
 {
-    for direction in directions.iter().copied() {
-        let Some(check_pos) = start.checked_add_direction(direction) else {
-            continue;
-        };
-
-        if let Entry::Vacant(v) = parents.entry(check_pos) {
+    for neighbor in neighbors {
+        if let Entry::Vacant(v) = parents.entry(*neighbor) {
             v.insert(start);
-            let next_tile_cost = cost_fn(check_pos);
-
-            let g_score = g_score.saturating_add(next_tile_cost);
-
-            // u32::MAX is our sentinel value for unpassable (or we've saturated the above add), skip this neighbor
-            if g_score == u32::MAX {
-                continue;
-            }
-
-            // let f_score = g_score.saturating_add(check_pos.get_range_heuristic(goal));
-            let raw_h_score = heuristic_fn(check_pos);
-            let h_score = if flatten_path_heuristic {
-                // In order to flatten the paths produced, i.e. preferring horizontal movement
-                // over diagonal movement for the same path cost, we scale up all heuristic
-                // values and then add a very slight cost increase to diagonal moves over
-                // horizontal moves.
-                let scaled_h_score = raw_h_score.saturating_mul(2);
-                if direction.is_diagonal() {
-                    scaled_h_score.saturating_add(1)
+            if let Some(next_tile_cost) = cost_fn(start, *neighbor) {
+                if let Some(next_g_score) = g_score.checked_add(&next_tile_cost) {
+                    let raw_h_score = heuristic_fn(*neighbor);
+                    let h_score = raw_h_score;
+                    if let Some(f_score) = next_g_score.checked_add(&h_score) {
+                        heap.push(State {
+                            g_score: Some(next_g_score),
+                            f_score: Some(f_score),
+                            position: *neighbor,
+                        });
+                    } else {
+                        // We've saturated the cost add, skip this neighbor
+                        continue;
+                    }
                 } else {
-                    scaled_h_score
+                    // We've saturated the cost add, skip this neighbor
+                    continue;
                 }
             } else {
-                raw_h_score
-            };
-            let f_score = g_score.saturating_add(h_score);
-
-            heap.push(State {
-                g_score,
-                f_score,
-                position: check_pos,
-                open_direction: Some(direction),
-            });
+                // Invalid neighbor, skip
+                continue;
+            }
         }
     }
 }
 
-/// Highly-generic implementation of A* search algorithm.
+/// Handles node expansion into the open set.
+/// 
+/// `start` is the node that is currently being expanded
+/// `g_score` is the cost to get to the `start` node so far during our search
+/// `neighbors` is the new nodes being considered for addition to the open set, paired with the direction of movement from `start` to the neighbor
+/// `cost_fn` is a function that takes a pair of nodes and returns the cost to move from the first node to the second node, or None if the transition is invalid
+/// `heuristic_fn` is a function that takes a node and returns the estimated cost to move from that node to the final goal node
+/// `heap` this is the open set of nodes that are candidates for exploration/expansion
+/// `parents` this is a lookup table from nodes to their parents
+#[allow(clippy::too_many_arguments)]
+fn expand_grid_neighbors<T: AStarGridNode, G, F, O>(
+    start: T,
+    g_score: O,
+    neighbors: &[(T, Direction)],
+    cost_fn: G,
+    heuristic_fn: F,
+    heap: &mut BinaryHeap<GridState<T, O>>,
+    parents: &mut HashMap<T, T>,
+) where
+    G: Fn(T, T) -> Option<O>,
+    F: Fn(T) -> O,
+    O: AStarCost,
+{
+    for (neighbor, direction) in neighbors {
+        if let Entry::Vacant(v) = parents.entry(*neighbor) {
+            v.insert(start);
+            if let Some(next_tile_cost) = cost_fn(start, *neighbor) {
+                if let Some(next_g_score) = g_score.checked_add(&next_tile_cost) {
+                    let raw_h_score = heuristic_fn(*neighbor);
+                    let h_score = raw_h_score;
+                    if let Some(f_score) = next_g_score.checked_add(&h_score) {
+                        heap.push(GridState {
+                            g_score: Some(next_g_score),
+                            f_score: Some(f_score),
+                            position: *neighbor,
+                            open_direction: Some(*direction),
+                        });
+                    } else {
+                        // We've saturated the cost add, skip this neighbor
+                        continue;
+                    }
+                } else {
+                    // We've saturated the cost add, skip this neighbor
+                    continue;
+                }
+            } else {
+                // Invalid neighbor, skip
+                continue;
+            }
+        }
+    }
+}
+
+fn generate_neighbors_direction_flatten_heuristic<T, H, O>(start: T, raw_node_heuristic: H) -> impl Fn(T) -> O
+where
+  T: AStarGridNode,
+  H: Fn(T) -> O,
+  O: AStarCost + std::ops::Sub<u32, Output = O>,
+{
+    let all_directions_iter = Direction::iter();
+    let diagonal_neighbors: Vec<T> = all_directions_iter
+        .filter(|d| d.is_diagonal())
+        .flat_map(|d| start.checked_add_direction(*d))
+        .collect();
+
+    move |node: T| {
+        // We always need to calculate the f_score for a node
+        let raw_f_score = raw_node_heuristic(node);
+        match diagonal_neighbors.iter().any(|n| *n == node) {
+            true => raw_f_score - 1, // If we find the node is a diagonal move, return the f_score slightly downgraded
+            false => raw_f_score, // The node isn't a diagonal move, so return the f_score unchanged
+        }
+    }
+}
+
+/// Highly-generic implementation of A* search algorithm on a grid.
 ///
 /// Allows multiple starting nodes, a generic goal function,
 /// generic cost and heuristic functions, control over
@@ -165,23 +311,40 @@ fn check_directions<T: AStarNode, G, F>(
 /// Generally, you should not need to use this directly; use
 /// one of the convenience functions instead:
 /// [shortest_path_roomxy_single_goal] and [shortest_path_roomxy_multiple_goals]
-pub fn shortest_path_generic<T: AStarNode, P, G, F>(
+///
+/// Parameters:
+///
+/// - `start`: A slice of the starting nodes for the search
+/// - `goal_fn`: A predicate function that takes a node and returns true if the node is a goal node
+/// - `cost_fn`: A function that takes in the current node and a neighbor node and returns the cost of moving to that neighbor node, or None if the transition is invalid
+/// - `heuristic_fn`: A function that takes a node and returns the estimated cost of moving to the goal node from that node
+/// - `max_ops`: The maximum number of expand operations to perform before stopping search
+/// - `max_cost`: The maximum cost to allow for the final path before stopping search
+/// - `initial_cost`: The initial cost to start the search with
+pub fn shortest_path_generic_grid<T: AStarGridNode, P, G, F, O>(
     start: &[T],
     goal_fn: &P,
     cost_fn: G,
     heuristic_fn: F,
     max_ops: u32,
-    max_cost: u32,
-    flatten_path_heuristic: bool,
-) -> AStarSearchResults<T>
+    max_cost: O,
+    initial_cost: O,
+) -> AStarSearchResults<T, O>
 where
     P: Fn(T) -> bool,
-    G: Fn(T) -> u32,
-    F: Fn(T) -> u32,
+    G: Fn(T, T) -> Option<O>,
+    F: Fn(T) -> O,
+    O: AStarCost,
 {
+    // let all_directions_iter = Direction::iter();
+    // let diagonal_neighbors: Vec<T> = all_directions_iter
+    //     .filter(|d| d.is_diagonal())
+    //     .flat_map(|d| start.checked_add_direction(*d))
+    //     .collect();
+
     let mut remaining_ops: u32 = max_ops;
     let mut best_reached = start[0];
-    let mut best_reached_f_score = u32::MAX;
+    let mut best_reached_f_score: Option<O> = None;
 
     // Build this once, instead of repeatedly inside the node expansions loop
     let all_directions_iter = Direction::iter();
@@ -191,9 +354,9 @@ where
     let mut heap = BinaryHeap::new();
 
     for s in start.iter().copied() {
-        let initial_open_entry = State {
-            g_score: 0,
-            f_score: heuristic_fn(s),
+        let initial_open_entry = GridState {
+            g_score: Some(initial_cost),
+            f_score: Some(heuristic_fn(s)),
             position: s,
             open_direction: None,
         };
@@ -201,10 +364,10 @@ where
     }
 
     // Examine the frontier with lower cost nodes first (min-heap)
-    while let Some(State {
-        g_score,
+    while let Some(GridState {
+        g_score: g_score_opt,
         position,
-        f_score,
+        f_score: f_score_opt,
         open_direction,
     }) = heap.pop()
     {
@@ -213,17 +376,37 @@ where
             let path_opt = get_path_from_parents(&parents, position);
             return AStarSearchResults {
                 ops_used: max_ops - remaining_ops,
-                cost: g_score,
+                cost: g_score_opt,
                 incomplete: false,
                 path: path_opt.unwrap_or_else(|| Vec::new()),
             };
         }
 
+        if g_score_opt.is_none() {
+            // We've saturated the cost, skip this node
+            continue;
+        }
+
+        let g_score = g_score_opt.unwrap();
+
+        // Don't evaluate children if we're beyond the maximum cost
+        if g_score >= max_cost {
+            continue;
+        }
+
+        if f_score_opt.is_none() {
+            // We've saturated the heuristic cost, skip this node
+            continue;
+        }
+
+        let f_score = f_score_opt.unwrap();
+
         // if this is the most promising path yet, mark it as the point to use for rebuild
         // if we have to return incomplete
-        if f_score < best_reached_f_score {
+        // Safety: we can unwrap here because we already know it's not None
+        if best_reached_f_score.map_or(true, |brfs| f_score < brfs) {
             best_reached = position;
-            best_reached_f_score = f_score;
+            best_reached_f_score = Some(f_score);
         }
 
         remaining_ops -= 1;
@@ -231,11 +414,6 @@ where
         // Stop searching if we've run out of remaining ops we're allowed to perform
         if remaining_ops == 0 {
             break;
-        }
-
-        // don't evaluate children if we're beyond the maximum cost
-        if g_score >= max_cost {
-            continue;
         }
 
         let directions: &[Direction] = if let Some(open_direction) = open_direction {
@@ -272,15 +450,20 @@ where
             all_directions
         };
 
-        check_directions(
+        let neighbors: Vec<(T, Direction)> = directions.iter()
+            .map(|d| (position.checked_add_direction(*d), *d))
+            .filter(|(opt, _)| opt.is_some())
+            .map(|(opt, d)| (opt.unwrap(), d))
+            .collect();
+
+        expand_grid_neighbors(
             position,
             g_score,
-            directions,
+            &neighbors,
             &cost_fn,
             &heuristic_fn,
             &mut heap,
             &mut parents,
-            flatten_path_heuristic,
         );
     }
 
@@ -316,7 +499,7 @@ fn get_path_from_parents<T: AStarNode>(parents: &HashMap<T, T>, end: T) -> Optio
 /// from a single starting node to a single goal node.
 ///
 /// Uses sane default values for maximum operations and travel costs.
-/// For more fine-grained control, see: [shortest_path_generic]
+/// For more fine-grained control, see: [shortest_path_generic_grid]
 ///
 /// # Example
 /// ```rust
@@ -328,13 +511,12 @@ fn get_path_from_parents<T: AStarNode>(parents: &HashMap<T, T>, end: T) -> Optio
 /// let plain_cost = 1;
 /// let swamp_cost = 5;
 /// let costs = screeps_pathfinding::utils::movement_costs::get_movement_cost_lcm_from_terrain(&room_terrain, plain_cost, swamp_cost);
-/// let costs_fn = screeps_pathfinding::utils::movement_costs::movement_costs_from_lcm(&costs);
+/// let costs_fn = screeps_pathfinding::utils::movement_costs::astar_movement_costs_from_lcm(&costs);
 ///
 /// let search_results = screeps_pathfinding::algorithms::astar::shortest_path_roomxy_single_goal(
 ///     start,
 ///     goal,
 ///     costs_fn,
-///     true,
 /// );
 ///
 /// if !search_results.incomplete() {
@@ -350,19 +532,18 @@ pub fn shortest_path_roomxy_single_goal<G>(
     start: RoomXY,
     goal: RoomXY,
     cost_fn: G,
-    flatten_path_heuristic: bool,
-) -> AStarSearchResults<RoomXY>
+) -> AStarSearchResults<RoomXY, u32>
 where
-    G: Fn(RoomXY) -> u32,
+    G: Fn(RoomXY) -> Option<u32>,
 {
-    shortest_path_roomxy_multiple_goals(start, &[goal], cost_fn, flatten_path_heuristic)
+    shortest_path_roomxy_multiple_goals(start, &[goal], cost_fn)
 }
 
 /// Convenience function for the common use-case of searching
 /// from a single starting node to multiple goal nodes.
 ///
 /// Uses sane default values for maximum operations and travel costs.
-/// For more fine-grained control, see: [shortest_path_generic]
+/// For more fine-grained control, see: [shortest_path_generic_grid]
 ///
 /// # Example
 /// ```rust
@@ -375,13 +556,12 @@ where
 /// let plain_cost = 1;
 /// let swamp_cost = 5;
 /// let costs = screeps_pathfinding::utils::movement_costs::get_movement_cost_lcm_from_terrain(&room_terrain, plain_cost, swamp_cost);
-/// let costs_fn = screeps_pathfinding::utils::movement_costs::movement_costs_from_lcm(&costs);
+/// let costs_fn = screeps_pathfinding::utils::movement_costs::astar_movement_costs_from_lcm(&costs);
 ///
 /// let search_results = screeps_pathfinding::algorithms::astar::shortest_path_roomxy_multiple_goals(
 ///     start,
 ///     &[goal_a, goal_b],
 ///     costs_fn,
-///     true,
 /// );
 ///
 /// if !search_results.incomplete() {
@@ -397,17 +577,15 @@ pub fn shortest_path_roomxy_multiple_goals<G>(
     start: RoomXY,
     goals: &[RoomXY],
     cost_fn: G,
-    flatten_path_heuristic: bool,
-) -> AStarSearchResults<RoomXY>
+) -> AStarSearchResults<RoomXY, u32>
 where
-    G: Fn(RoomXY) -> u32,
+    G: Fn(RoomXY) -> Option<u32>,
 {
     shortest_path_roomxy_multistart(
         &[start],
         &goal_exact_node_multigoal(goals),
         cost_fn,
         &heuristic_get_range_to_multigoal(goals),
-        flatten_path_heuristic,
     )
 }
 
@@ -418,11 +596,10 @@ pub fn shortest_path_roomxy<P, G, F>(
     goal_fn: &P,
     cost_fn: G,
     heuristic_fn: &F,
-    flatten_path_heuristic: bool,
-) -> AStarSearchResults<RoomXY>
+) -> AStarSearchResults<RoomXY, u32>
 where
     P: Fn(RoomXY) -> bool,
-    G: Fn(RoomXY) -> u32,
+    G: Fn(RoomXY) -> Option<u32>,
     F: Fn(RoomXY) -> u32,
 {
     shortest_path_roomxy_multistart(
@@ -430,7 +607,6 @@ where
         goal_fn,
         cost_fn,
         heuristic_fn,
-        flatten_path_heuristic,
     )
 }
 
@@ -441,23 +617,23 @@ pub fn shortest_path_roomxy_multistart<P, G, F>(
     goal_fn: &P,
     cost_fn: G,
     heuristic_fn: &F,
-    flatten_path_heuristic: bool,
-) -> AStarSearchResults<RoomXY>
+) -> AStarSearchResults<RoomXY, u32>
 where
     P: Fn(RoomXY) -> bool,
-    G: Fn(RoomXY) -> u32,
+    G: Fn(RoomXY) -> Option<u32>,
     F: Fn(RoomXY) -> u32,
 {
     let max_ops = 2000;
     let max_cost = 2000;
-    shortest_path_generic(
+    let new_cost_fn = ignore_first_param_cost_fn(cost_fn);
+    shortest_path_generic_grid(
         start_nodes,
         goal_fn,
-        cost_fn,
+        new_cost_fn,
         heuristic_fn,
         max_ops,
         max_cost,
-        flatten_path_heuristic,
+        0,
     )
 }
 
@@ -465,7 +641,7 @@ where
 /// from a single starting node to a single goal node.
 ///
 /// Uses sane default values for maximum operations and travel costs.
-/// For more fine-grained control, see: [shortest_path_generic]
+/// For more fine-grained control, see: [shortest_path_generic_grid]
 ///
 /// # Example
 /// ```rust
@@ -486,13 +662,12 @@ where
 /// let plain_cost = 1;
 /// let swamp_cost = 5;
 /// let costs = screeps_pathfinding::utils::movement_costs::get_movement_cost_lcm_from_terrain(&room_terrain, plain_cost, swamp_cost);
-/// let costs_fn = screeps_pathfinding::utils::movement_costs::movement_costs_from_lcm(&costs);
+/// let costs_fn = screeps_pathfinding::utils::movement_costs::astar_movement_costs_from_lcm(&costs);
 ///
 /// let search_results = screeps_pathfinding::algorithms::astar::shortest_path_position_single_goal(
 ///     start,
 ///     goal,
 ///     costs_fn,
-///     true,
 /// );
 ///
 /// if !search_results.incomplete() {
@@ -508,19 +683,18 @@ pub fn shortest_path_position_single_goal<G>(
     start: Position,
     goal: Position,
     cost_fn: G,
-    flatten_path_heuristic: bool,
-) -> AStarSearchResults<Position>
+) -> AStarSearchResults<Position, u32>
 where
-    G: Fn(Position) -> u32,
+    G: Fn(Position) -> Option<u32>,
 {
-    shortest_path_position_multiple_goals(start, &[goal], cost_fn, flatten_path_heuristic)
+    shortest_path_position_multiple_goals(start, &[goal], cost_fn)
 }
 
 /// Convenience function for the common use-case of searching
 /// from a single starting node to multiple goal nodes.
 ///
 /// Uses sane default values for maximum operations and travel costs.
-/// For more fine-grained control, see: [shortest_path_generic]
+/// For more fine-grained control, see: [shortest_path_generic_grid]
 ///
 /// # Example
 /// ```rust
@@ -542,13 +716,12 @@ where
 /// let plain_cost = 1;
 /// let swamp_cost = 5;
 /// let costs = screeps_pathfinding::utils::movement_costs::get_movement_cost_lcm_from_terrain(&room_terrain, plain_cost, swamp_cost);
-/// let costs_fn = screeps_pathfinding::utils::movement_costs::movement_costs_from_lcm(&costs);
+/// let costs_fn = screeps_pathfinding::utils::movement_costs::astar_movement_costs_from_lcm(&costs);
 ///
 /// let search_results = screeps_pathfinding::algorithms::astar::shortest_path_position_multiple_goals(
 ///     start,
 ///     &[goal_a, goal_b],
 ///     costs_fn,
-///     true,
 /// );
 ///
 /// if !search_results.incomplete() {
@@ -564,17 +737,15 @@ pub fn shortest_path_position_multiple_goals<G>(
     start: Position,
     goals: &[Position],
     cost_fn: G,
-    flatten_path_heuristic: bool,
-) -> AStarSearchResults<Position>
+) -> AStarSearchResults<Position, u32>
 where
-    G: Fn(Position) -> u32,
+    G: Fn(Position) -> Option<u32>,
 {
     shortest_path_position_multistart(
         &[start],
         &goal_exact_node_multigoal(goals),
         cost_fn,
         &heuristic_get_range_to_multigoal(goals),
-        flatten_path_heuristic,
     )
 }
 
@@ -585,11 +756,10 @@ pub fn shortest_path_position<P, G, F>(
     goal_fn: &P,
     cost_fn: G,
     heuristic_fn: &F,
-    flatten_path_heuristic: bool,
-) -> AStarSearchResults<Position>
+) -> AStarSearchResults<Position, u32>
 where
     P: Fn(Position) -> bool,
-    G: Fn(Position) -> u32,
+    G: Fn(Position) -> Option<u32>,
     F: Fn(Position) -> u32,
 {
     shortest_path_position_multistart(
@@ -597,7 +767,6 @@ where
         goal_fn,
         cost_fn,
         heuristic_fn,
-        flatten_path_heuristic,
     )
 }
 
@@ -608,25 +777,34 @@ pub fn shortest_path_position_multistart<P, G, F>(
     goal_fn: &P,
     cost_fn: G,
     heuristic_fn: &F,
-    flatten_path_heuristic: bool,
-) -> AStarSearchResults<Position>
+) -> AStarSearchResults<Position, u32>
 where
     P: Fn(Position) -> bool,
-    G: Fn(Position) -> u32,
+    G: Fn(Position) -> Option<u32>,
     F: Fn(Position) -> u32,
 {
     let max_ops = 2000;
     let max_cost = 2000;
-    shortest_path_generic(
+
+    let new_cost_fn = ignore_first_param_cost_fn(cost_fn);
+    shortest_path_generic_grid(
         start_nodes,
         goal_fn,
-        cost_fn,
+        new_cost_fn,
         heuristic_fn,
         max_ops,
         max_cost,
-        flatten_path_heuristic,
+        0,
     )
 }
+
+fn ignore_first_param_cost_fn<G, T, O>(cost_fn: G) -> impl Fn(T, T) -> O
+where
+    G: Fn(T) -> O,
+{
+    move |_, p| cost_fn(p)
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -645,12 +823,12 @@ mod tests {
         )
     }
 
-    fn all_tiles_are_plains_costs<T>(_node: T) -> u32 {
-        1
+    fn all_tiles_are_plains_costs<T>(_prev: T, _node: T) -> Option<u32> {
+        Some(1)
     }
 
-    fn all_tiles_are_swamps_costs<T>(_node: T) -> u32 {
-        5
+    fn all_tiles_are_swamps_costs<T>(_prev: T, _node: T) -> Option<u32> {
+        Some(5)
     }
 
     fn is_goal_fn<T: std::cmp::PartialEq>(goal: T) -> impl Fn(T) -> bool {
@@ -658,20 +836,20 @@ mod tests {
     }
 
     // Testing function where all tiles are reachable except for (10, 12)
-    fn roomxy_unreachable_tile_costs(node: RoomXY) -> u32 {
+    fn roomxy_unreachable_tile_costs(_prev: RoomXY, node: RoomXY) -> Option<u32> {
         if node.x.u8() == 10 && node.y.u8() == 12 {
-            u32::MAX
+            None
         } else {
-            1
+            Some(1)
         }
     }
 
     // Testing function where all tiles are reachable except for (10, 12)
-    fn position_unreachable_tile_costs(node: Position) -> u32 {
+    fn position_unreachable_tile_costs(_prev: Position, node: Position) -> Option<u32> {
         if node.x().u8() == 10 && node.y().u8() == 12 {
-            u32::MAX
+            None
         } else {
-            1
+            Some(1)
         }
     }
 
@@ -681,18 +859,19 @@ mod tests {
     fn simple_linear_path_roomxy() {
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
         let goal = unsafe { RoomXY::unchecked_new(10, 12) };
-        let search_results = shortest_path_generic(
+        let search_results = shortest_path_generic_grid(
             &[start],
             &is_goal_fn(goal),
             all_tiles_are_plains_costs,
             heuristic_get_range_to(goal),
             2000,
             2000,
-            true,
+            0,
         );
 
         assert_eq!(search_results.incomplete(), false);
-        assert_eq!(search_results.cost(), 2);
+        assert!(search_results.cost().is_some());
+        assert_eq!(search_results.cost().unwrap(), 2);
         assert_eq!(search_results.ops() < 2000, true);
 
         let path = search_results.path();
@@ -719,18 +898,19 @@ mod tests {
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
         let goal = new_position(room_name, 10, 12);
-        let search_results = shortest_path_generic(
+        let search_results = shortest_path_generic_grid(
             &[start],
             &is_goal_fn(goal),
             all_tiles_are_plains_costs,
             heuristic_get_range_to(goal),
             2000,
             2000,
-            true,
+            0,
         );
 
         assert_eq!(search_results.incomplete(), false);
-        assert_eq!(search_results.cost(), 2);
+        assert!(search_results.cost().is_some());
+        assert_eq!(search_results.cost().unwrap(), 2);
         assert_eq!(search_results.ops() < 2000, true);
 
         let path = search_results.path();
@@ -756,20 +936,21 @@ mod tests {
     fn unreachable_target_roomxy() {
         let start = unsafe { RoomXY::unchecked_new(10, 10) };
         let goal = unsafe { RoomXY::unchecked_new(10, 12) };
-        let search_results = shortest_path_generic(
+        let search_results = shortest_path_generic_grid(
             &[start],
             &is_goal_fn(goal),
             roomxy_unreachable_tile_costs,
             heuristic_get_range_to(goal),
             2000,
             2000,
-            true,
+            0,
         );
 
         println!("{:?}", search_results);
 
         assert_eq!(search_results.incomplete(), true);
-        assert_eq!(search_results.cost() > 0, true);
+        assert!(search_results.cost().is_some());
+        assert_eq!(search_results.cost().unwrap() > 0, true);
         assert_eq!(search_results.ops() == 2000, true);
     }
 
@@ -778,20 +959,21 @@ mod tests {
         let room_name = "E5N6";
         let start = new_position(room_name, 10, 10);
         let goal = new_position(room_name, 10, 12);
-        let search_results = shortest_path_generic(
+        let search_results = shortest_path_generic_grid(
             &[start],
             &is_goal_fn(goal),
             position_unreachable_tile_costs,
             heuristic_get_range_to(goal),
             2000,
             2000,
-            true,
+            0,
         );
 
         println!("{:?}", search_results);
 
         assert_eq!(search_results.incomplete(), true);
-        assert_eq!(search_results.cost() > 0, true);
+        assert!(search_results.cost().is_some());
+        assert_eq!(search_results.cost().unwrap() > 0, true);
         assert_eq!(search_results.ops() > 0, true);
     }
 
@@ -803,33 +985,35 @@ mod tests {
         let goal = unsafe { RoomXY::unchecked_new(30, 30) }; // This target generally takes ~20 ops to find
 
         // Failure case
-        let search_results = shortest_path_generic(
+        let search_results = shortest_path_generic_grid(
             &[start],
             &is_goal_fn(goal),
             all_tiles_are_plains_costs,
             heuristic_get_range_to(goal),
             max_ops_failure,
             2000,
-            true,
+            0,
         );
 
         assert_eq!(search_results.incomplete(), true);
-        assert_eq!(search_results.cost() > 0, true);
+        assert!(search_results.cost().is_some());
+        assert_eq!(search_results.cost().unwrap() > 0, true);
         assert_eq!(search_results.ops() == max_ops_failure, true);
 
         // Success case
-        let search_results = shortest_path_generic(
+        let search_results = shortest_path_generic_grid(
             &[start],
             &is_goal_fn(goal),
             all_tiles_are_plains_costs,
             heuristic_get_range_to(goal),
             max_ops_success,
             2000,
-            true,
+            0,
         );
 
         assert_eq!(search_results.incomplete(), false);
-        assert_eq!(search_results.cost() > 0, true);
+        assert!(search_results.cost().is_some());
+        assert_eq!(search_results.cost().unwrap() > 0, true);
         assert_eq!(search_results.ops() < max_ops_success, true);
 
         let path = search_results.path();
@@ -846,33 +1030,34 @@ mod tests {
         let goal = new_position(room_name, 30, 30); // This target generally takes ~20 ops to find
 
         // Failure case
-        let search_results = shortest_path_generic(
+        let search_results = shortest_path_generic_grid(
             &[start],
             &is_goal_fn(goal),
             all_tiles_are_plains_costs,
             heuristic_get_range_to(goal),
             max_ops_failure,
             2000,
-            true,
+            0,
         );
 
         assert_eq!(search_results.incomplete(), true);
-        assert_eq!(search_results.cost() > 0, true);
+        assert_eq!(search_results.cost().unwrap() > 0, true);
         assert_eq!(search_results.ops() == max_ops_failure, true);
 
         // Success case
-        let search_results = shortest_path_generic(
+        let search_results = shortest_path_generic_grid(
             &[start],
             &is_goal_fn(goal),
             all_tiles_are_plains_costs,
             heuristic_get_range_to(goal),
             max_ops_success,
             2000,
-            true,
+            0,
         );
 
         assert_eq!(search_results.incomplete(), false);
-        assert_eq!(search_results.cost() > 0, true);
+        assert!(search_results.cost().is_some());
+        assert_eq!(search_results.cost().unwrap() > 0, true);
         assert_eq!(search_results.ops() < max_ops_success, true);
 
         let path = search_results.path();
@@ -888,32 +1073,33 @@ mod tests {
         let goal = unsafe { RoomXY::unchecked_new(10, 12) }; // This target will cost 10 to move to
 
         // Failure case
-        let search_results = shortest_path_generic(
+        let search_results = shortest_path_generic_grid(
             &[start],
             &is_goal_fn(goal),
             all_tiles_are_swamps_costs,
             heuristic_get_range_to(goal),
             2000,
             max_cost_failure,
-            true,
+            0,
         );
 
         assert_eq!(search_results.incomplete(), true);
         assert_eq!(search_results.ops() < 2000, true);
 
         // Success case
-        let search_results = shortest_path_generic(
+        let search_results = shortest_path_generic_grid(
             &[start],
             &is_goal_fn(goal),
             all_tiles_are_swamps_costs,
             heuristic_get_range_to(goal),
             2000,
             max_cost_success,
-            true,
+            0,
         );
 
         assert_eq!(search_results.incomplete(), false);
-        assert_eq!(search_results.cost() < max_cost_success, true);
+        assert!(search_results.cost().is_some());
+        assert_eq!(search_results.cost().unwrap() < max_cost_success, true);
         assert_eq!(search_results.ops() < 2000, true);
 
         let path = search_results.path();
@@ -930,32 +1116,33 @@ mod tests {
         let goal = new_position(room_name, 10, 12); // This target will cost 10 to move to
 
         // Failure case
-        let search_results = shortest_path_generic(
+        let search_results = shortest_path_generic_grid(
             &[start],
             &is_goal_fn(goal),
             all_tiles_are_swamps_costs,
             heuristic_get_range_to(goal),
             2000,
             max_cost_failure,
-            true,
+            0,
         );
         println!("{:?}", search_results);
         assert_eq!(search_results.incomplete(), true);
         assert_eq!(search_results.ops() < 2000, true);
 
         // Success case
-        let search_results = shortest_path_generic(
+        let search_results = shortest_path_generic_grid(
             &[start],
             &is_goal_fn(goal),
             all_tiles_are_swamps_costs,
             heuristic_get_range_to(goal),
             2000,
             max_cost_success,
-            true,
+            0,
         );
 
         assert_eq!(search_results.incomplete(), false);
-        assert_eq!(search_results.cost() < max_cost_success, true);
+        assert!(search_results.cost().is_some());
+        assert_eq!(search_results.cost().unwrap() < max_cost_success, true);
         assert_eq!(search_results.ops() < 2000, true);
 
         let path = search_results.path();
