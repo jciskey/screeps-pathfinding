@@ -31,19 +31,13 @@ impl<T> AStarGridNode for T where T: AStarNode + AddDirection {}
 /// Helper trait for defining how we use generic costs in A*, allowing users to bring their own
 /// costs without being locked into e.g. u32.
 pub trait AStarCost:
-    std::ops::Add<Self, Output = Self> +
-    CheckedAdd +
-    Copy +
-    Eq +
-    Sized +
-    std::cmp::Ord {}
-impl<T> AStarCost for T where T:
-    std::ops::Add<Self, Output = Self> +
-    CheckedAdd +
-    Copy +
-    Eq +
-    Sized +
-    std::cmp::Ord {}
+    std::ops::Add<Self, Output = Self> + CheckedAdd + Copy + Eq + Sized + std::cmp::Ord
+{
+}
+impl<T> AStarCost for T where
+    T: std::ops::Add<Self, Output = Self> + CheckedAdd + Copy + Eq + Sized + std::cmp::Ord
+{
+}
 
 #[derive(Debug)]
 pub struct AStarSearchResults<T, O>
@@ -92,7 +86,6 @@ fn compare_option_scores<O: AStarCost>(a: Option<O>, b: Option<O>) -> Ordering {
         (Some(l), Some(r)) => l.cmp(&r),
     }
 }
-
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct State<T, O>
@@ -199,7 +192,7 @@ where
 }
 
 /// Handles node expansion into the open set for graph-search A*.
-/// 
+///
 /// `start` is the node that is currently being expanded
 /// `g_score` is the cost to get to the `start` node so far during our search
 /// `neighbors` is the new nodes being considered for addition to the open set, as well as their f and g scores
@@ -224,7 +217,7 @@ fn expand_neighbors<T: AStarNode, O: AStarCost>(
 }
 
 /// Handles node expansion into the open set for grid-search A*.
-/// 
+///
 /// `start` is the node that is currently being expanded
 /// `g_score` is the cost to get to the `start` node so far during our search
 /// `neighbors` is the new nodes being considered for addition to the open set, paired with the direction of movement from `start` to the neighbor
@@ -287,7 +280,7 @@ fn expand_grid_neighbors<T: AStarGridNode, G, F, O>(
 //         .filter(|d| d.is_diagonal())
 //         .flat_map(|d| start.checked_add_direction(*d))
 //         .collect();
-// 
+//
 //     move |node: T| {
 //         // We always need to calculate the f_score for a node
 //         let raw_f_score = raw_node_heuristic(node);
@@ -451,7 +444,8 @@ where
             all_directions
         };
 
-        let neighbors: Vec<(T, Direction)> = directions.iter()
+        let neighbors: Vec<(T, Direction)> = directions
+            .iter()
             .map(|d| (position.checked_add_direction(*d), *d))
             .filter(|(opt, _)| opt.is_some())
             .map(|(opt, d)| (opt.unwrap(), d))
@@ -568,12 +562,7 @@ where
 
         let neighbors: Vec<(T, O, O)> = neighbors_fn(position, g_score);
 
-        expand_neighbors(
-            position,
-            &neighbors,
-            &mut heap,
-            &mut parents,
-        );
+        expand_neighbors(position, &neighbors, &mut heap, &mut parents);
     }
 
     // Goal not reachable
@@ -715,12 +704,7 @@ where
     G: Fn(RoomXY) -> Option<u32>,
     F: Fn(RoomXY) -> u32,
 {
-    shortest_path_roomxy_multistart(
-        &[start],
-        goal_fn,
-        cost_fn,
-        heuristic_fn,
-    )
+    shortest_path_roomxy_multistart(&[start], goal_fn, cost_fn, heuristic_fn)
 }
 
 /// Convenience method for running multi-start A* with default costs
@@ -883,12 +867,7 @@ where
     G: Fn(Position) -> Option<u32>,
     F: Fn(Position) -> u32,
 {
-    shortest_path_position_multistart(
-        &[start],
-        goal_fn,
-        cost_fn,
-        heuristic_fn,
-    )
+    shortest_path_position_multistart(&[start], goal_fn, cost_fn, heuristic_fn)
 }
 
 /// Convenience method for running multi-start A* with default costs
@@ -929,7 +908,6 @@ where
 {
     move |_, p| cost_fn(p)
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1034,7 +1012,7 @@ mod tests {
         for i in 0..u8::MAX {
             let low_f_score = i;
             let high_f_score = i + 1;
-            
+
             for (a_g_score, b_g_score, a_pos, b_pos) in irrelevant_score_orderings {
                 let a = State {
                     g_score: a_g_score,
@@ -1074,7 +1052,7 @@ mod tests {
         for i in 0..u8::MAX {
             let low_g_score = i;
             let high_g_score = i + 1;
-            
+
             for (a_pos, b_pos) in irrelevant_score_orderings {
                 let a = State {
                     g_score: low_g_score,
@@ -1106,7 +1084,7 @@ mod tests {
         for i in 0..u8::MAX {
             let low_pos = i;
             let high_pos = i + 1;
-            
+
             let a = State {
                 g_score: g_score,
                 f_score: f_score,
@@ -1150,7 +1128,7 @@ mod tests {
         for i in 0..u8::MAX {
             let low_f_score = i;
             let high_f_score = i + 1;
-            
+
             for (a_g_score, b_g_score, a_pos, b_pos) in irrelevant_score_orderings {
                 let a = GridState {
                     g_score: Some(a_g_score),
@@ -1192,7 +1170,7 @@ mod tests {
         for i in 0..u8::MAX {
             let low_g_score = i;
             let high_g_score = i + 1;
-            
+
             for (a_pos, b_pos) in irrelevant_score_orderings {
                 let a = GridState {
                     g_score: Some(low_g_score),
@@ -1226,7 +1204,7 @@ mod tests {
         for i in 0..u8::MAX {
             let low_pos = i;
             let high_pos = i + 1;
-            
+
             let a = GridState {
                 g_score: Some(g_score),
                 f_score: Some(f_score),
@@ -1272,7 +1250,7 @@ mod tests {
         for i in 0..u8::MAX {
             let low_f_score = i;
             let high_f_score = i + 1;
-            
+
             for (a_g_score, b_g_score, a_pos, b_pos) in irrelevant_score_orderings {
                 let a = State {
                     g_score: a_g_score,
@@ -1310,7 +1288,7 @@ mod tests {
         for i in 0..u8::MAX {
             let low_g_score = i;
             let high_g_score = i + 1;
-            
+
             for (a_pos, b_pos) in irrelevant_score_orderings {
                 let a = State {
                     g_score: low_g_score,
@@ -1341,7 +1319,7 @@ mod tests {
         for i in 0..u8::MAX {
             let low_pos = i;
             let high_pos = i + 1;
-            
+
             let a = State {
                 g_score: g_score,
                 f_score: f_score,
@@ -1384,7 +1362,7 @@ mod tests {
         for i in 0..u8::MAX {
             let low_f_score = i;
             let high_f_score = i + 1;
-            
+
             for (a_g_score, b_g_score, a_pos, b_pos) in irrelevant_score_orderings {
                 let a = GridState {
                     g_score: Some(a_g_score),
@@ -1424,7 +1402,7 @@ mod tests {
         for i in 0..u8::MAX {
             let low_g_score = i;
             let high_g_score = i + 1;
-            
+
             for (a_pos, b_pos) in irrelevant_score_orderings {
                 let a = GridState {
                     g_score: Some(low_g_score),
@@ -1457,7 +1435,7 @@ mod tests {
         for i in 0..u8::MAX {
             let low_pos = i;
             let high_pos = i + 1;
-            
+
             let a = GridState {
                 g_score: Some(g_score),
                 f_score: Some(f_score),
