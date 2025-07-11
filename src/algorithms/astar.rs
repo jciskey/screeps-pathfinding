@@ -207,7 +207,6 @@ where
 /// `parents` this is a lookup table from nodes to their parents
 fn expand_neighbors<T: AStarNode, O: AStarCost>(
     start: T,
-    g_score: O,
     neighbors: &[(T, O, O)],
     heap: &mut BinaryHeap<State<T, O>>,
     parents: &mut HashMap<T, T>,
@@ -277,27 +276,27 @@ fn expand_grid_neighbors<T: AStarGridNode, G, F, O>(
     }
 }
 
-fn generate_neighbors_direction_flatten_heuristic<T, H, O>(start: T, raw_node_heuristic: H) -> impl Fn(T) -> O
-where
-  T: AStarGridNode,
-  H: Fn(T) -> O,
-  O: AStarCost + std::ops::Sub<u32, Output = O>,
-{
-    let all_directions_iter = Direction::iter();
-    let diagonal_neighbors: Vec<T> = all_directions_iter
-        .filter(|d| d.is_diagonal())
-        .flat_map(|d| start.checked_add_direction(*d))
-        .collect();
-
-    move |node: T| {
-        // We always need to calculate the f_score for a node
-        let raw_f_score = raw_node_heuristic(node);
-        match diagonal_neighbors.iter().any(|n| *n == node) {
-            true => raw_f_score - 1, // If we find the node is a diagonal move, return the f_score slightly downgraded
-            false => raw_f_score, // The node isn't a diagonal move, so return the f_score unchanged
-        }
-    }
-}
+// fn generate_neighbors_direction_flatten_heuristic<T, H, O>(start: T, raw_node_heuristic: H) -> impl Fn(T) -> O
+// where
+//   T: AStarGridNode,
+//   H: Fn(T) -> O,
+//   O: AStarCost + std::ops::Sub<u32, Output = O>,
+// {
+//     let all_directions_iter = Direction::iter();
+//     let diagonal_neighbors: Vec<T> = all_directions_iter
+//         .filter(|d| d.is_diagonal())
+//         .flat_map(|d| start.checked_add_direction(*d))
+//         .collect();
+// 
+//     move |node: T| {
+//         // We always need to calculate the f_score for a node
+//         let raw_f_score = raw_node_heuristic(node);
+//         match diagonal_neighbors.contains(|n| *n == node) {
+//             true => raw_f_score - 1, // If we find the node is a diagonal move, return the f_score slightly downgraded
+//             false => raw_f_score, // The node isn't a diagonal move, so return the f_score unchanged
+//         }
+//     }
+// }
 
 /// Highly-generic implementation of A* search algorithm on a grid.
 ///
@@ -406,7 +405,7 @@ where
         // if this is the most promising path yet, mark it as the point to use for rebuild
         // if we have to return incomplete
         // Safety: we can unwrap here because we already know it's not None
-        if best_reached_f_score.map_or(true, |brfs| f_score < brfs) {
+        if best_reached_f_score.is_none_or(|brfs| f_score < brfs) {
             best_reached = position;
             best_reached_f_score = Some(f_score);
         }
@@ -571,7 +570,6 @@ where
 
         expand_neighbors(
             position,
-            g_score,
             &neighbors,
             &mut heap,
             &mut parents,
