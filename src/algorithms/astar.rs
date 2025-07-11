@@ -79,17 +79,31 @@ impl<T: AStarNode, O: AStarCost> AStarSearchResults<T, O> {
     }
 }
 
+/// A helper function to compare costs that are wrapped as Options.
+///
+/// If both are None, they're considered equal.
+/// If one is Some, that is considered the smaller value (None == Infinity).
+/// If both are Some, compare them directly.
+fn compare_option_scores<O: AStarCost>(a: Option<O>, b: Option<O>) -> Ordering {
+    match (a, b) {
+        (None, None) => Ordering::Equal,
+        (Some(_), None) => Ordering::Less,
+        (None, Some(_)) => Ordering::Greater,
+        (Some(l), Some(r)) => l.cmp(&r),
+    }
+}
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct State<T, O>
 where
     T: Ord,
     O: AStarCost,
 {
     /// cost to reach this position (the g_score in A* terminology)
-    g_score: Option<O>,
+    g_score: O,
     /// f_score is the sum of the known cost to reach this position (the g_score) plus the estimated cost remaining from this position in the best possible case
-    f_score: Option<O>,
+    f_score: O,
     /// the actual position
     position: T,
 }
@@ -103,15 +117,20 @@ where
     O: AStarCost,
 {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Notice that we flip the ordering on costs.
-        // In case of a tie we compare positions - this step is necessary
-        // to make implementations of `PartialEq` and `Ord` consistent.
-        match (other.f_score, self.f_score) {
-            (None, None) => self.position.cmp(&other.position),
-            (Some(_), None) => Ordering::Less,
-            (None, Some(_)) => Ordering::Greater,
-            (Some(a), Some(b)) => a.cmp(&b).then_with(|| self.position.cmp(&other.position))
-        }
+        // Notice that we flip the ordering on costs for f-scores, to convert the queue into a min-heap
+        // instead of a max-heap.
+        other.f_score.cmp(&self.f_score).then_with(|| {
+            // If the f-scores are equal, then we should tie-break with their g-scores;
+            // this doesn't affect optimality, but it's a well-known optimization in the
+            // literature to prefer the node with the higher g-score, since that one is almost
+            // certainly closer to the target (same f && higher g -> lower h).
+            self.g_score.cmp(&other.g_score).then_with(|| {
+                // If the f and g scores are all equal, then we compare the positions of the nodes;
+                // this gives us a guaranteed total ordering, which makes the implementations of
+                // `PartialEq` and `Ord` consistent.
+                self.position.cmp(&other.position)
+            })
+        })
     }
 }
 
@@ -126,7 +145,7 @@ where
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct GridState<T, O>
 where
     T: Ord,
@@ -151,15 +170,20 @@ where
     O: AStarCost,
 {
     fn cmp(&self, other: &Self) -> Ordering {
-        // Notice that we flip the ordering on costs.
-        // In case of a tie we compare positions - this step is necessary
-        // to make implementations of `PartialEq` and `Ord` consistent.
-        match (other.f_score, self.f_score) {
-            (None, None) => self.position.cmp(&other.position),
-            (Some(_), None) => Ordering::Less,
-            (None, Some(_)) => Ordering::Greater,
-            (Some(a), Some(b)) => a.cmp(&b).then_with(|| self.position.cmp(&other.position))
-        }
+        // Notice that we flip the ordering on costs for f-scores, to convert the queue into a min-heap
+        // instead of a max-heap.
+        compare_option_scores(other.f_score, self.f_score).then_with(|| {
+            // If the f-scores are equal, then we should tie-break with their g-scores;
+            // this doesn't affect optimality, but it's a well-known optimization in the
+            // literature to prefer the node with the higher g-score, since that one is almost
+            // certainly closer to the target (same f && higher g -> lower h).
+            compare_option_scores(self.g_score, other.g_score).then_with(|| {
+                // If the f and g scores are all equal, then we compare the positions of the nodes;
+                // this gives us a guaranteed total ordering, which makes the implementations of
+                // `PartialEq` and `Ord` consistent.
+                self.position.cmp(&other.position)
+            })
+        })
     }
 }
 
@@ -174,59 +198,33 @@ where
     }
 }
 
-/// Handles node expansion into the open set.
+/// Handles node expansion into the open set for graph-search A*.
 /// 
 /// `start` is the node that is currently being expanded
 /// `g_score` is the cost to get to the `start` node so far during our search
-/// `neighbors` is the new nodes being considered for addition to the open set
-/// `cost_fn` is a function that takes a pair of nodes and returns the cost to move from the first node to the second node, or None if the transition is invalid
-/// `heuristic_fn` is a function that takes a node and returns the estimated cost to move from that node to the final goal node
+/// `neighbors` is the new nodes being considered for addition to the open set, as well as their f and g scores
 /// `heap` this is the open set of nodes that are candidates for exploration/expansion
 /// `parents` this is a lookup table from nodes to their parents
-#[allow(clippy::too_many_arguments)]
-fn expand_neighbors<T: AStarNode, G, F, O>(
+fn expand_neighbors<T: AStarNode, O: AStarCost>(
     start: T,
     g_score: O,
-    neighbors: &[T],
-    cost_fn: G,
-    heuristic_fn: F,
+    neighbors: &[(T, O, O)],
     heap: &mut BinaryHeap<State<T, O>>,
     parents: &mut HashMap<T, T>,
-) where
-    G: Fn(T, T) -> Option<O>,
-    F: Fn(T) -> O,
-    O: AStarCost,
-{
-    for neighbor in neighbors {
+) {
+    for (neighbor, next_f_score, next_g_score) in neighbors {
         if let Entry::Vacant(v) = parents.entry(*neighbor) {
             v.insert(start);
-            if let Some(next_tile_cost) = cost_fn(start, *neighbor) {
-                if let Some(next_g_score) = g_score.checked_add(&next_tile_cost) {
-                    let raw_h_score = heuristic_fn(*neighbor);
-                    let h_score = raw_h_score;
-                    if let Some(f_score) = next_g_score.checked_add(&h_score) {
-                        heap.push(State {
-                            g_score: Some(next_g_score),
-                            f_score: Some(f_score),
-                            position: *neighbor,
-                        });
-                    } else {
-                        // We've saturated the cost add, skip this neighbor
-                        continue;
-                    }
-                } else {
-                    // We've saturated the cost add, skip this neighbor
-                    continue;
-                }
-            } else {
-                // Invalid neighbor, skip
-                continue;
-            }
+            heap.push(State {
+                g_score: *next_g_score,
+                f_score: *next_f_score,
+                position: *neighbor,
+            });
         }
     }
 }
 
-/// Handles node expansion into the open set.
+/// Handles node expansion into the open set for grid-search A*.
 /// 
 /// `start` is the node that is currently being expanded
 /// `g_score` is the cost to get to the `start` node so far during our search
@@ -321,6 +319,10 @@ where
 /// - `max_ops`: The maximum number of expand operations to perform before stopping search
 /// - `max_cost`: The maximum cost to allow for the final path before stopping search
 /// - `initial_cost`: The initial cost to start the search with
+///
+/// Note: This function assumes that the heuristic function is consistent, and optimizes
+/// accordingly. If your heuristic function is admissible but not consistent, then you risk getting
+/// suboptimal paths, just like if your heuristic function is not admissible.
 pub fn shortest_path_generic_grid<T: AStarGridNode, P, G, F, O>(
     start: &[T],
     goal_fn: &P,
@@ -477,6 +479,115 @@ where
     }
 }
 
+/// Highly-generic implementation of A* search algorithm on a graph.
+///
+/// Allows multiple starting nodes, a generic goal function,
+/// generic cost and heuristic functions, control over
+/// the maximum operations performed while searching,
+/// and the maximum travel cost the final path can have.
+///
+/// Parameters:
+///
+/// - `start`: A slice of the starting nodes for the search
+/// - `goal_fn`: A predicate function that takes a node and returns true if the node is a goal node
+/// - `neighbors_fn`: A function that takes in the current node and its g score and returns its neighbors, as well as their f and g scores
+/// - `max_ops`: The maximum number of expand operations to perform before stopping search
+/// - `max_cost`: The maximum cost to allow for the final path before stopping search
+/// - `initial_cost`: The initial cost to start the search with; this is the g_score
+/// - `initial_estimate`: The initial estimate to start the search with; this is the f_score
+///
+/// Note: This function assumes that the heuristic function is consistent, and optimizes
+/// accordingly. If your heuristic function is admissible but not consistent, then you risk getting
+/// suboptimal paths, just like if your heuristic function is not admissible.
+pub fn shortest_path_generic_graph<T: AStarNode, P, N, G, F, O>(
+    start: &[T],
+    goal_fn: &P,
+    neighbors_fn: &N,
+    max_ops: u32,
+    max_cost: O,
+    initial_cost: O,
+    initial_estimate: O,
+) -> AStarSearchResults<T, O>
+where
+    P: Fn(T) -> bool,
+    N: Fn(T, O) -> Vec<(T, O, O)>,
+    O: AStarCost,
+{
+    let mut remaining_ops: u32 = max_ops;
+    let mut best_reached = start[0];
+    let mut best_reached_f_score = initial_estimate;
+
+    let mut parents: HashMap<T, T> = HashMap::new();
+    let mut heap = BinaryHeap::new();
+
+    for s in start.iter().copied() {
+        let initial_open_entry = State {
+            g_score: initial_cost,
+            f_score: initial_estimate,
+            position: s,
+        };
+        heap.push(initial_open_entry);
+    }
+
+    // Examine the frontier with lower cost nodes first (min-heap)
+    while let Some(State {
+        g_score,
+        f_score,
+        position,
+    }) = heap.pop()
+    {
+        // We found the goal state, return the search results
+        if goal_fn(position) {
+            let path_opt = get_path_from_parents(&parents, position);
+            return AStarSearchResults {
+                ops_used: max_ops - remaining_ops,
+                cost: Some(g_score),
+                incomplete: false,
+                path: path_opt.unwrap_or_else(|| Vec::new()),
+            };
+        }
+
+        // Don't evaluate children if we're beyond the maximum cost
+        if g_score >= max_cost {
+            continue;
+        }
+
+        // if this is the most promising path yet, mark it as the point to use for rebuild
+        // if we have to return incomplete
+        // Safety: we can unwrap here because we already know it's not None
+        if f_score < best_reached_f_score {
+            best_reached = position;
+            best_reached_f_score = f_score;
+        }
+
+        remaining_ops -= 1;
+
+        // Stop searching if we've run out of remaining ops we're allowed to perform
+        if remaining_ops == 0 {
+            break;
+        }
+
+        let neighbors: Vec<(T, O, O)> = neighbors_fn(position, g_score);
+
+        expand_neighbors(
+            position,
+            g_score,
+            &neighbors,
+            &mut heap,
+            &mut parents,
+        );
+    }
+
+    // Goal not reachable
+    let path_opt = get_path_from_parents(&parents, best_reached);
+    AStarSearchResults {
+        ops_used: max_ops - remaining_ops,
+        cost: Some(best_reached_f_score),
+        incomplete: true,
+        path: path_opt.unwrap_or_else(|| Vec::new()),
+    }
+}
+
 fn get_path_from_parents<T: AStarNode>(parents: &HashMap<T, T>, end: T) -> Option<Vec<T>> {
     let mut path = Vec::new();
 
@@ -591,6 +702,10 @@ where
 
 /// Convenience method for running single-start A* with default costs
 /// while still retaining control over the heuristic function used.
+///
+/// Note: This function assumes that the heuristic function is consistent, and optimizes
+/// accordingly. If your heuristic function is admissible but not consistent, then you risk getting
+/// suboptimal paths, just like if your heuristic function is not admissible.
 pub fn shortest_path_roomxy<P, G, F>(
     start: RoomXY,
     goal_fn: &P,
@@ -612,6 +727,10 @@ where
 
 /// Convenience method for running multi-start A* with default costs
 /// while still retaining control over the heuristic function used.
+///
+/// Note: This function assumes that the heuristic function is consistent, and optimizes
+/// accordingly. If your heuristic function is admissible but not consistent, then you risk getting
+/// suboptimal paths, just like if your heuristic function is not admissible.
 pub fn shortest_path_roomxy_multistart<P, G, F>(
     start_nodes: &[RoomXY],
     goal_fn: &P,
@@ -751,6 +870,10 @@ where
 
 /// Convenience method for running single-start A* with default costs
 /// while still retaining control over the heuristic function used.
+///
+/// Note: This function assumes that the heuristic function is consistent, and optimizes
+/// accordingly. If your heuristic function is admissible but not consistent, then you risk getting
+/// suboptimal paths, just like if your heuristic function is not admissible.
 pub fn shortest_path_position<P, G, F>(
     start: Position,
     goal_fn: &P,
@@ -772,6 +895,10 @@ where
 
 /// Convenience method for running multi-start A* with default costs
 /// while still retaining control over the heuristic function used.
+///
+/// Note: This function assumes that the heuristic function is consistent, and optimizes
+/// accordingly. If your heuristic function is admissible but not consistent, then you risk getting
+/// suboptimal paths, just like if your heuristic function is not admissible.
 pub fn shortest_path_position_multistart<P, G, F>(
     start_nodes: &[Position],
     goal_fn: &P,
@@ -854,6 +981,504 @@ mod tests {
     }
 
     // Test Cases
+
+    #[test]
+    fn compare_option_scores_orders_properly() {
+        // Test the None, None case
+        let res = compare_option_scores::<u8>(None, None);
+        assert_eq!(res, Ordering::Equal);
+
+        for i in 0..u8::MAX {
+            let a = i;
+            let b = i + 1;
+
+            // Test the Some, None cases
+            let res = compare_option_scores(Some(a), None);
+            assert_eq!(res, Ordering::Less);
+            let res = compare_option_scores(None, Some(a));
+            assert_eq!(res, Ordering::Greater);
+
+            // Test the < case
+            let res = compare_option_scores(Some(a), Some(b));
+            assert_eq!(res, Ordering::Less);
+
+            // Test the > case
+            let res = compare_option_scores(Some(b), Some(a));
+            assert_eq!(res, Ordering::Greater);
+
+            // Test the = case
+            let res = compare_option_scores(Some(a), Some(a));
+            assert_eq!(res, Ordering::Equal);
+        }
+    }
+
+    #[test]
+    fn state_orders_comparisons_by_f_score_descending() {
+        // Test that f-scores always sort in descending order (greater values return
+        // Ordering::Less), regardless of g-score or position
+        let large_g_score: u8 = 100;
+        let small_g_score: u8 = 5;
+        let large_position: u8 = 40;
+        let small_position: u8 = 4;
+
+        let irrelevant_score_orderings = [
+            (small_g_score, large_g_score, small_position, large_position),
+            (small_g_score, large_g_score, small_position, large_position),
+            (small_g_score, large_g_score, large_position, small_position),
+            (large_g_score, small_g_score, large_position, large_position),
+            (large_g_score, small_g_score, large_position, small_position),
+            (large_g_score, small_g_score, large_position, large_position),
+            (large_g_score, large_g_score, large_position, large_position),
+            (large_g_score, large_g_score, large_position, small_position),
+            (large_g_score, large_g_score, large_position, large_position),
+        ];
+
+        for i in 0..u8::MAX {
+            let low_f_score = i;
+            let high_f_score = i + 1;
+            
+            for (a_g_score, b_g_score, a_pos, b_pos) in irrelevant_score_orderings {
+                let a = State {
+                    g_score: a_g_score,
+                    f_score: low_f_score,
+                    position: a_pos,
+                };
+                let b = State {
+                    g_score: b_g_score,
+                    f_score: high_f_score,
+                    position: b_pos,
+                };
+
+                let res = a.cmp(&b);
+                // Remember, f_score orderings are intended to be reversed/descending, so since a.f_score < b.f_score, a > b
+                assert_eq!(res, Ordering::Greater);
+
+                let res = b.cmp(&a);
+                assert_eq!(res, Ordering::Less);
+            }
+        }
+    }
+
+    #[test]
+    fn state_orders_comparisons_by_g_score_descending_for_equal_f_scores() {
+        // Test that g-score tie-breaking always sorts in ascending order (lesser values return
+        // Ordering::Less), regardless of position
+        let f_score: u8 = 50;
+        let large_position: u8 = 40;
+        let small_position: u8 = 4;
+
+        let irrelevant_score_orderings = [
+            (small_position, large_position),
+            (large_position, small_position),
+            (large_position, large_position),
+        ];
+
+        for i in 0..u8::MAX {
+            let low_g_score = i;
+            let high_g_score = i + 1;
+            
+            for (a_pos, b_pos) in irrelevant_score_orderings {
+                let a = State {
+                    g_score: low_g_score,
+                    f_score: f_score,
+                    position: a_pos,
+                };
+                let b = State {
+                    g_score: high_g_score,
+                    f_score: f_score,
+                    position: b_pos,
+                };
+
+                let res = a.cmp(&b);
+                assert_eq!(res, Ordering::Less);
+
+                let res = b.cmp(&a);
+                assert_eq!(res, Ordering::Greater);
+            }
+        }
+    }
+
+    #[test]
+    fn state_orders_comparisons_by_position_descending_for_equal_f_and_g_scores() {
+        // Test that position tie-breaking always sorts in ascending order (lesser values return
+        // Ordering::Less)
+        let f_score: u8 = 50;
+        let g_score: u8 = 5;
+
+        for i in 0..u8::MAX {
+            let low_pos = i;
+            let high_pos = i + 1;
+            
+            let a = State {
+                g_score: g_score,
+                f_score: f_score,
+                position: low_pos,
+            };
+            let b = State {
+                g_score: g_score,
+                f_score: f_score,
+                position: high_pos,
+            };
+
+            let res = a.cmp(&b);
+            assert_eq!(res, Ordering::Less);
+
+            let res = b.cmp(&a);
+            assert_eq!(res, Ordering::Greater);
+        }
+    }
+
+    #[test]
+    fn gridstate_orders_comparisons_by_f_score_descending() {
+        // Test that f-scores always sort in descending order (greater values return
+        // Ordering::Less), regardless of g-score or position
+        let large_g_score: u8 = 100;
+        let small_g_score: u8 = 5;
+        let large_position: u8 = 40;
+        let small_position: u8 = 4;
+
+        let irrelevant_score_orderings = [
+            (small_g_score, large_g_score, small_position, large_position),
+            (small_g_score, large_g_score, small_position, large_position),
+            (small_g_score, large_g_score, large_position, small_position),
+            (large_g_score, small_g_score, large_position, large_position),
+            (large_g_score, small_g_score, large_position, small_position),
+            (large_g_score, small_g_score, large_position, large_position),
+            (large_g_score, large_g_score, large_position, large_position),
+            (large_g_score, large_g_score, large_position, small_position),
+            (large_g_score, large_g_score, large_position, large_position),
+        ];
+
+        for i in 0..u8::MAX {
+            let low_f_score = i;
+            let high_f_score = i + 1;
+            
+            for (a_g_score, b_g_score, a_pos, b_pos) in irrelevant_score_orderings {
+                let a = GridState {
+                    g_score: Some(a_g_score),
+                    f_score: Some(low_f_score),
+                    position: a_pos,
+                    open_direction: None,
+                };
+                let b = GridState {
+                    g_score: Some(b_g_score),
+                    f_score: Some(high_f_score),
+                    position: b_pos,
+                    open_direction: None,
+                };
+
+                let res = a.cmp(&b);
+                // Remember, f_score orderings are intended to be reversed/descending, so since a.f_score < b.f_score, a > b
+                assert_eq!(res, Ordering::Greater);
+
+                let res = b.cmp(&a);
+                assert_eq!(res, Ordering::Less);
+            }
+        }
+    }
+
+    #[test]
+    fn gridstate_orders_comparisons_by_g_score_descending_for_equal_f_scores() {
+        // Test that g-score tie-breaking always sorts in ascending order (lesser values return
+        // Ordering::Less), regardless of position
+        let f_score: u8 = 50;
+        let large_position: u8 = 40;
+        let small_position: u8 = 4;
+
+        let irrelevant_score_orderings = [
+            (small_position, large_position),
+            (large_position, small_position),
+            (large_position, large_position),
+        ];
+
+        for i in 0..u8::MAX {
+            let low_g_score = i;
+            let high_g_score = i + 1;
+            
+            for (a_pos, b_pos) in irrelevant_score_orderings {
+                let a = GridState {
+                    g_score: Some(low_g_score),
+                    f_score: Some(f_score),
+                    position: a_pos,
+                    open_direction: None,
+                };
+                let b = GridState {
+                    g_score: Some(high_g_score),
+                    f_score: Some(f_score),
+                    position: b_pos,
+                    open_direction: None,
+                };
+
+                let res = a.cmp(&b);
+                assert_eq!(res, Ordering::Less);
+
+                let res = b.cmp(&a);
+                assert_eq!(res, Ordering::Greater);
+            }
+        }
+    }
+
+    #[test]
+    fn gridstate_orders_comparisons_by_position_ascending_for_equal_f_and_g_scores() {
+        // Test that position tie-breaking always sorts in ascending order (lesser values return
+        // Ordering::Less)
+        let f_score: u8 = 50;
+        let g_score: u8 = 5;
+
+        for i in 0..u8::MAX {
+            let low_pos = i;
+            let high_pos = i + 1;
+            
+            let a = GridState {
+                g_score: Some(g_score),
+                f_score: Some(f_score),
+                position: low_pos,
+                open_direction: None,
+            };
+            let b = GridState {
+                g_score: Some(g_score),
+                f_score: Some(f_score),
+                position: high_pos,
+                open_direction: None,
+            };
+
+            let res = a.cmp(&b);
+            assert_eq!(res, Ordering::Less);
+
+            let res = b.cmp(&a);
+            assert_eq!(res, Ordering::Greater);
+        }
+    }
+
+    #[test]
+    fn binary_heap_orders_state_by_f_score_descending() {
+        // Test that f-scores always sort in descending order (greater values return
+        // first), regardless of g-score or position
+        let large_g_score: u8 = 100;
+        let small_g_score: u8 = 5;
+        let large_position: u8 = 40;
+        let small_position: u8 = 4;
+
+        let irrelevant_score_orderings = [
+            (small_g_score, large_g_score, small_position, large_position),
+            (small_g_score, large_g_score, small_position, large_position),
+            (small_g_score, large_g_score, large_position, small_position),
+            (large_g_score, small_g_score, large_position, large_position),
+            (large_g_score, small_g_score, large_position, small_position),
+            (large_g_score, small_g_score, large_position, large_position),
+            (large_g_score, large_g_score, large_position, large_position),
+            (large_g_score, large_g_score, large_position, small_position),
+            (large_g_score, large_g_score, large_position, large_position),
+        ];
+
+        for i in 0..u8::MAX {
+            let low_f_score = i;
+            let high_f_score = i + 1;
+            
+            for (a_g_score, b_g_score, a_pos, b_pos) in irrelevant_score_orderings {
+                let a = State {
+                    g_score: a_g_score,
+                    f_score: low_f_score,
+                    position: a_pos,
+                };
+                let b = State {
+                    g_score: b_g_score,
+                    f_score: high_f_score,
+                    position: b_pos,
+                };
+
+                let mut heap = BinaryHeap::from([a, b]);
+
+                assert_eq!(heap.pop(), Some(a));
+                assert_eq!(heap.pop(), Some(b));
+            }
+        }
+    }
+
+    #[test]
+    fn binary_heap_orders_state_by_g_score_descending_for_equal_f_scores() {
+        // Test that g-score tie-breaking always sorts in descending order (greater values return
+        // first), regardless of position
+        let f_score: u8 = 50;
+        let large_position: u8 = 40;
+        let small_position: u8 = 4;
+
+        let irrelevant_score_orderings = [
+            (small_position, large_position),
+            (large_position, small_position),
+            (large_position, large_position),
+        ];
+
+        for i in 0..u8::MAX {
+            let low_g_score = i;
+            let high_g_score = i + 1;
+            
+            for (a_pos, b_pos) in irrelevant_score_orderings {
+                let a = State {
+                    g_score: low_g_score,
+                    f_score: f_score,
+                    position: a_pos,
+                };
+                let b = State {
+                    g_score: high_g_score,
+                    f_score: f_score,
+                    position: b_pos,
+                };
+
+                let mut heap = BinaryHeap::from([a, b]);
+
+                assert_eq!(heap.pop(), Some(b));
+                assert_eq!(heap.pop(), Some(a));
+            }
+        }
+    }
+
+    #[test]
+    fn binary_heap_orders_state_by_position_ascending_for_equal_f_and_g_scores() {
+        // Test that position tie-breaking always sorts in ascending order (lesser values return
+        // first)
+        let f_score: u8 = 50;
+        let g_score: u8 = 5;
+
+        for i in 0..u8::MAX {
+            let low_pos = i;
+            let high_pos = i + 1;
+            
+            let a = State {
+                g_score: g_score,
+                f_score: f_score,
+                position: low_pos,
+            };
+            let b = State {
+                g_score: g_score,
+                f_score: f_score,
+                position: high_pos,
+            };
+
+            let mut heap = BinaryHeap::from([a, b]);
+
+            assert_eq!(heap.pop(), Some(b));
+            assert_eq!(heap.pop(), Some(a));
+        }
+    }
+
+    #[test]
+    fn binary_heap_orders_gridstate_by_f_score_descending() {
+        // Test that f-scores always sort in descending order (greater values return
+        // first), regardless of g-score or position
+        let large_g_score: u8 = 100;
+        let small_g_score: u8 = 5;
+        let large_position: u8 = 40;
+        let small_position: u8 = 4;
+
+        let irrelevant_score_orderings = [
+            (small_g_score, large_g_score, small_position, large_position),
+            (small_g_score, large_g_score, small_position, large_position),
+            (small_g_score, large_g_score, large_position, small_position),
+            (large_g_score, small_g_score, large_position, large_position),
+            (large_g_score, small_g_score, large_position, small_position),
+            (large_g_score, small_g_score, large_position, large_position),
+            (large_g_score, large_g_score, large_position, large_position),
+            (large_g_score, large_g_score, large_position, small_position),
+            (large_g_score, large_g_score, large_position, large_position),
+        ];
+
+        for i in 0..u8::MAX {
+            let low_f_score = i;
+            let high_f_score = i + 1;
+            
+            for (a_g_score, b_g_score, a_pos, b_pos) in irrelevant_score_orderings {
+                let a = GridState {
+                    g_score: Some(a_g_score),
+                    f_score: Some(low_f_score),
+                    position: a_pos,
+                    open_direction: None,
+                };
+                let b = GridState {
+                    g_score: Some(b_g_score),
+                    f_score: Some(high_f_score),
+                    position: b_pos,
+                    open_direction: None,
+                };
+
+                let mut heap = BinaryHeap::from([a, b]);
+
+                assert_eq!(heap.pop(), Some(a));
+                assert_eq!(heap.pop(), Some(b));
+            }
+        }
+    }
+
+    #[test]
+    fn binary_heap_orders_gridstate_by_g_score_descending_for_equal_f_scores() {
+        // Test that g-score tie-breaking always sorts in descending order (greater values return
+        // first), regardless of position
+        let f_score: u8 = 50;
+        let large_position: u8 = 40;
+        let small_position: u8 = 4;
+
+        let irrelevant_score_orderings = [
+            (small_position, large_position),
+            (large_position, small_position),
+            (large_position, large_position),
+        ];
+
+        for i in 0..u8::MAX {
+            let low_g_score = i;
+            let high_g_score = i + 1;
+            
+            for (a_pos, b_pos) in irrelevant_score_orderings {
+                let a = GridState {
+                    g_score: Some(low_g_score),
+                    f_score: Some(f_score),
+                    position: a_pos,
+                    open_direction: None,
+                };
+                let b = GridState {
+                    g_score: Some(high_g_score),
+                    f_score: Some(f_score),
+                    position: b_pos,
+                    open_direction: None,
+                };
+
+                let mut heap = BinaryHeap::from([a, b]);
+
+                assert_eq!(heap.pop(), Some(b));
+                assert_eq!(heap.pop(), Some(a));
+            }
+        }
+    }
+
+    #[test]
+    fn binary_heap_orders_gridstate_by_position_ascending_for_equal_f_and_g_scores() {
+        // Test that position tie-breaking always sorts in ascending order (lesser values return
+        // first)
+        let f_score: u8 = 50;
+        let g_score: u8 = 5;
+
+        for i in 0..u8::MAX {
+            let low_pos = i;
+            let high_pos = i + 1;
+            
+            let a = GridState {
+                g_score: Some(g_score),
+                f_score: Some(f_score),
+                position: low_pos,
+                open_direction: None,
+            };
+            let b = GridState {
+                g_score: Some(g_score),
+                f_score: Some(f_score),
+                position: high_pos,
+                open_direction: None,
+            };
+
+            let mut heap = BinaryHeap::from([a, b]);
+
+            assert_eq!(heap.pop(), Some(b));
+            assert_eq!(heap.pop(), Some(a));
+        }
+    }
 
     #[test]
     fn simple_linear_path_roomxy() {
