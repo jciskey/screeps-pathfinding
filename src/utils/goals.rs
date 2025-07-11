@@ -47,7 +47,7 @@ pub fn goal_exact_node<T: std::cmp::PartialEq + 'static>(goal: T) -> impl Fn(T) 
 ///     &heuristic_get_range_to_multigoal(goals),
 /// );
 pub fn goal_exact_node_multigoal<T: std::cmp::PartialEq>(goals: &[T]) -> impl Fn(T) -> bool + '_ {
-    |node: T| goals.iter().any(|g| node == *g)
+    |node: T| goals.contains(|g| node == *g)
 }
 
 /// Helper function to create a goal function closure for matching
