@@ -25,17 +25,17 @@ impl<T> AStarNode for T where T: Eq + Hash + Copy + Ord {}
 
 /// Extends the AStarNode trait to also include the requirement for adding a direction, which is
 /// sufficient to define the 8-connected grid that we use in Screeps.
-pub trait AStarGridNode: AStarNode + AddDirection {}
-impl<T> AStarGridNode for T where T: AStarNode + AddDirection {}
+pub trait AStarGridNode: AStarNode + AddDirection + std::fmt::Debug {}
+impl<T> AStarGridNode for T where T: AStarNode + AddDirection + std::fmt::Debug {}
 
 /// Helper trait for defining how we use generic costs in A*, allowing users to bring their own
 /// costs without being locked into e.g. u32.
 pub trait AStarCost:
-    std::ops::Add<Self, Output = Self> + CheckedAdd + Copy + Eq + Sized + std::cmp::Ord
+    std::ops::Add<Self, Output = Self> + CheckedAdd + Copy + Eq + Sized + std::cmp::Ord + std::fmt::Debug
 {
 }
 impl<T> AStarCost for T where
-    T: std::ops::Add<Self, Output = Self> + CheckedAdd + Copy + Eq + Sized + std::cmp::Ord
+    T: std::ops::Add<Self, Output = Self> + CheckedAdd + Copy + Eq + Sized + std::cmp::Ord + std::fmt::Debug
 {
 }
 
@@ -233,20 +233,83 @@ fn expand_grid_neighbors<T: AStarGridNode, G, F, O>(
     cost_fn: G,
     heuristic_fn: F,
     heap: &mut BinaryHeap<GridState<T, O>>,
+    lowest_seen_g_scores: &mut HashMap<T, O>,
     parents: &mut HashMap<T, T>,
 ) where
     G: Fn(T, T) -> Option<O>,
     F: Fn(T) -> O,
     O: AStarCost,
 {
+    let debug_print = true;
+    // if (start.x.u8() == 25) & (start.y.u8() == 10) {
+    //     // Divergence node: RoomXY { x: RoomCoordinate(25), y: RoomCoordinate(10) }, 
+    //     println!("Expanding neighbors for divergence node");
+    //     debug_print = true;
+    // }
+    println!("Expanding neighbors for: {:?}", start);
+
     for (neighbor, direction) in neighbors {
-        if let Entry::Vacant(v) = parents.entry(*neighbor) {
-            v.insert(start);
-            if let Some(next_tile_cost) = cost_fn(start, *neighbor) {
-                if let Some(next_g_score) = g_score.checked_add(&next_tile_cost) {
+
+        // Do this as a match statement, with this as the branch for vacant; the occupied branch
+        // needs to do g-score checking, and then if the g-score is smaller than the lowest seen,
+        // add that node to the heap
+        if let Some(next_tile_cost) = cost_fn(start, *neighbor) {
+            if let Some(next_g_score) = g_score.checked_add(&next_tile_cost) {
+                let add_state_to_heap: bool = match parents.entry(*neighbor) {
+                    Entry::Occupied(mut v) => {
+                        // Check the g_score of the neighbor we're examining against the smallest
+                        // we've seen for that node; if the current g_score is smaller, then we
+                        // want to add an updated copy of the node to the heap with the new
+                        // g_score.
+                        //
+                        // We *could* modify the existing entry in the heap, but that would require
+                        // us to convert the heap into an iterable, modify the entry there, and
+                        // rebuild the heap. For a once-in-a-blue-moon thing, not terrible, but
+                        // this can happen regularly, so we want to avoid all that work. The
+                        // trade-off is that we have to filter those higher g_score nodes when
+                        // we're popping those node entries off of the heap to explore the
+                        // frontier.
+                        match lowest_seen_g_scores.entry(*neighbor) {
+                            Entry::Vacant(score_entry) => {
+                                // This should never happen, but for safety and sanity, just add the
+                                // node to the frontier heap anyway.
+                                score_entry.insert(next_g_score);
+                                v.insert(start);
+                                true
+                            },
+                            Entry::Occupied(mut score_entry) => {
+                                if next_g_score < *score_entry.get() {
+                                    // We've arrived at the node via a shorter path, adjust its
+                                    // lowest score entry and parent pointer
+                                    let _ = score_entry.insert(next_g_score);
+                                    let _ = v.insert(start);
+                                    true
+                                } else {
+                                    // We've arrived at the node via a same-length or longer path,
+                                    // this can't ever be part of a shorter path, don't add it to
+                                    // the frontier
+                                    false
+                                }
+                            },
+                        }
+
+                    },
+                    Entry::Vacant(v) => {
+                        // We've never seen this node before, add it to the frontier
+                        lowest_seen_g_scores.insert(*neighbor, next_g_score);
+                        v.insert(start);
+                        true
+                    }
+                };
+
+                if add_state_to_heap {
                     let raw_h_score = heuristic_fn(*neighbor);
                     let h_score = raw_h_score;
                     if let Some(f_score) = next_g_score.checked_add(&h_score) {
+                        // if debug_print {
+                        //     println!("Node: {:?}, g: {:?}, h: {:?}, f: {:?}", neighbor, next_g_score, h_score, f_score);
+                        // }
+
                         heap.push(GridState {
                             g_score: Some(next_g_score),
                             f_score: Some(f_score),
@@ -257,14 +320,14 @@ fn expand_grid_neighbors<T: AStarGridNode, G, F, O>(
                         // We've saturated the cost add, skip this neighbor
                         continue;
                     }
-                } else {
-                    // We've saturated the cost add, skip this neighbor
-                    continue;
                 }
             } else {
-                // Invalid neighbor, skip
+                // The g_score cost add has saturated, skip this neighbor
                 continue;
             }
+        } else {
+            // No cost function output, skip this neighbor
+            continue;
         }
     }
 }
@@ -344,8 +407,15 @@ where
     let all_directions_iter = Direction::iter();
     let all_directions = all_directions_iter.as_slice();
 
+    // This is a tree of parent pointers, used to reconstruct the final path
     let mut parents: HashMap<T, T> = HashMap::new();
+    
+    // This is the open set, the frontier of nodes we have yet to explore in our search
     let mut heap = BinaryHeap::new();
+
+    // This is a lookup table of the lowest g-score we've seen for any particular node, used to
+    // determine whether we need to re-explore a node or not
+    let mut lowest_seen_g_scores: HashMap<T, O> = HashMap::new();
 
     for s in start.iter().copied() {
         let initial_open_entry = GridState {
@@ -355,6 +425,8 @@ where
             open_direction: None,
         };
         heap.push(initial_open_entry);
+
+        lowest_seen_g_scores.insert(s, initial_cost);
     }
 
     // Examine the frontier with lower cost nodes first (min-heap)
@@ -385,6 +457,26 @@ where
 
         // Don't evaluate children if we're beyond the maximum cost
         if g_score >= max_cost {
+            continue;
+        }
+
+        let should_skip_node: bool = match lowest_seen_g_scores.entry(position) {
+            Entry::Vacant(_) => {
+                // This should never happen, but for safety and sanity, expand the node
+                false
+            },
+            Entry::Occupied(score_entry) => {
+                if g_score > *score_entry.get() {
+                    // If the g-score for this node is higher than the lowest that we've seen, then
+                    // this is part of a suboptimal path and should be skipped
+                    true
+                } else {
+                    false
+                }
+            },
+        };
+
+        if should_skip_node {
             continue;
         }
 
@@ -458,6 +550,7 @@ where
             &cost_fn,
             &heuristic_fn,
             &mut heap,
+            &mut lowest_seen_g_scores,
             &mut parents,
         );
     }
@@ -909,12 +1002,24 @@ where
     move |_, p| cost_fn(p)
 }
 
+fn optionize_cost_fn_results<G, T, O>(cost_fn: G) -> impl Fn(T, T) -> Option<O>
+where
+    G: Fn(T, T) -> O,
+{
+    move |a, b| Some(cost_fn(a, b))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     use crate::utils::heuristics::heuristic_get_range_to;
-    use screeps::local::{Position, RoomCoordinate, RoomXY};
+    use screeps::local::{Position, RoomCoordinate, RoomXY, RoomName};
+    use screeps::constants::Terrain;
+
+    use crate::common::data::load_all_room_terrains_from_map;
+
+    use itertools::Itertools;
 
     // Helper Functions
 
@@ -1749,5 +1854,194 @@ mod tests {
         let path = search_results.path();
 
         assert_eq!(path.len(), 3);
+    }
+
+    #[test]
+    fn validate_path_is_optimal_for_mmo_shard3_W49N34() {
+        let terrains_map = load_all_room_terrains_from_map("map-mmo-shard3.json");
+        let room_name_str = "W49N34";
+
+        let room_name = RoomName::new(room_name_str).unwrap();
+
+        let terrain_data = terrains_map.get(&room_name).unwrap();
+
+        let start = unsafe { RoomXY::unchecked_new(6, 0) }; // Top-left exit tile
+        let goal = unsafe { RoomXY::unchecked_new(40, 49) }; // Bottom-right exit tile
+
+        let plain_cost = 1;
+        let swamp_cost = 5;
+        let costs = crate::utils::movement_costs::get_movement_cost_lcm_from_terrain(&terrain_data, plain_cost, swamp_cost);
+        let costs_fn = crate::utils::movement_costs::movement_costs_from_lcm(&costs);
+        let neighbors_fn = crate::utils::neighbors::room_xy_neighbors;
+        let max_ops = 2000;
+        let max_cost = 2000;
+
+        let dijkstra_search_results = crate::algorithms::dijkstra::shortest_path_generic(
+            &[start],
+            &is_goal_fn(goal),
+            &costs_fn,
+            neighbors_fn,
+            max_ops,
+            max_cost,
+        );
+
+        assert_eq!(dijkstra_search_results.incomplete(), false);
+        let dijkstra_path = dijkstra_search_results.path();
+
+        let new_cost_fn = optionize_cost_fn_results(ignore_first_param_cost_fn(costs_fn));
+
+        let astar_search_results = shortest_path_generic_grid(
+            &[start],
+            &is_goal_fn(goal),
+            new_cost_fn,
+            heuristic_get_range_to(goal),
+            max_ops,
+            max_cost,
+            0,
+        );
+
+        assert_eq!(astar_search_results.incomplete(), false);
+        let astar_path = astar_search_results.path();
+
+        assert_eq!(astar_search_results.cost().unwrap(), dijkstra_search_results.cost());
+    }
+
+    #[test]
+    fn validate_path_is_optimal_for_mmo_shard3_W49N34_known_edge_case() {
+        let terrains_map = load_all_room_terrains_from_map("map-mmo-shard3.json");
+        let room_name_str = "W49N34";
+
+        let room_name = RoomName::new(room_name_str).unwrap();
+
+        let terrain_data = terrains_map.get(&room_name).unwrap();
+
+        let start = unsafe { RoomXY::unchecked_new(6, 0) };
+        let goal = unsafe { RoomXY::unchecked_new(32, 5) };
+
+        let plain_cost = 1;
+        let swamp_cost = 5;
+        let costs = crate::utils::movement_costs::get_movement_cost_lcm_from_terrain(&terrain_data, plain_cost, swamp_cost);
+        let costs_fn = crate::utils::movement_costs::movement_costs_from_lcm(&costs);
+        let neighbors_fn = crate::utils::neighbors::room_xy_neighbors;
+        let max_ops = 2000;
+        let max_cost = 2000;
+
+        let dijkstra_search_results = crate::algorithms::dijkstra::shortest_path_generic(
+            &[start],
+            &is_goal_fn(goal),
+            &costs_fn,
+            neighbors_fn,
+            max_ops,
+            max_cost,
+        );
+
+        assert_eq!(dijkstra_search_results.incomplete(), false);
+        let dijkstra_path = dijkstra_search_results.path();
+
+        let new_cost_fn = optionize_cost_fn_results(ignore_first_param_cost_fn(costs_fn));
+
+        let astar_search_results = shortest_path_generic_grid(
+            &[start],
+            &is_goal_fn(goal),
+            new_cost_fn,
+            heuristic_get_range_to(goal),
+            max_ops,
+            max_cost,
+            0,
+        );
+
+        assert_eq!(astar_search_results.incomplete(), false);
+        let astar_path = astar_search_results.path();
+
+        assert_eq!(astar_search_results.cost().unwrap(), dijkstra_search_results.cost());
+    }
+
+    #[test]
+    #[ignore]
+    fn validate_path_is_optimal_for_mmo_shard3_arbitrary_rooms() {
+        let terrains_map = load_all_room_terrains_from_map("map-mmo-shard3.json");
+
+        let mut skipped_because_plains = 0;
+        let mut num_rooms = 0;
+        let room_name_str = "W49N34";
+        let room_name = RoomName::new(room_name_str).unwrap();
+        let tmp = vec!(terrains_map.get(&room_name).unwrap());
+        for terrain_data in tmp {
+        //for terrain_data in terrains_map.values() {
+            num_rooms += 1;
+
+            let plains_tiles: Vec<RoomXY> = (0..50).cartesian_product(0..50)
+                .map(|(y, x)| unsafe { RoomXY::unchecked_new(x, y) } )
+                .filter(|pos| {
+                    match terrain_data.get_xy(*pos) {
+                        Terrain::Plain => true,
+                        _ => false,
+                    }
+                })
+                .collect();
+
+            if plains_tiles.is_empty() {
+                // No Plains terrain, skip this room
+                skipped_because_plains += 1;
+                continue;
+            }
+
+            let total_length = plains_tiles.len();
+            let second_half_start = total_length / 2;
+
+            let start_positions = &plains_tiles[0..second_half_start];
+            let goal_positions = &plains_tiles[second_half_start..total_length];
+
+            for (start_ref, goal_ref) in start_positions.iter().cartesian_product(goal_positions) {
+                let start = *start_ref;
+                let goal = *goal_ref;
+                if start == goal {
+                    continue;
+                }
+
+                let plain_cost = 1;
+                let swamp_cost = 5;
+                let costs = crate::utils::movement_costs::get_movement_cost_lcm_from_terrain(&terrain_data, plain_cost, swamp_cost);
+                let costs_fn = crate::utils::movement_costs::movement_costs_from_lcm(&costs);
+                let neighbors_fn = crate::utils::neighbors::room_xy_neighbors;
+                let max_ops = 2000;
+                let max_cost = 2000;
+
+                let dijkstra_search_results = crate::algorithms::dijkstra::shortest_path_generic(
+                    &[start],
+                    &is_goal_fn(goal),
+                    &costs_fn,
+                    neighbors_fn,
+                    max_ops,
+                    max_cost,
+                );
+
+                assert_eq!(dijkstra_search_results.incomplete(), false);
+                let dijkstra_path = dijkstra_search_results.path();
+
+                let new_cost_fn = optionize_cost_fn_results(ignore_first_param_cost_fn(costs_fn));
+                let always_one_heuristic = |_| 1;
+
+                let astar_search_results = shortest_path_generic_grid(
+                    &[start],
+                    &is_goal_fn(goal),
+                    new_cost_fn,
+                    always_one_heuristic,
+                    //heuristic_get_range_to(goal),
+                    max_ops,
+                    max_cost,
+                    0,
+                );
+
+                assert_eq!(astar_search_results.incomplete(), false);
+                let astar_path = astar_search_results.path();
+
+                //assert_eq!(astar_path.len(), dijkstra_path.len(), "Dijkstra: {:?}\nA*: {:?}", dijkstra_path, astar_path);
+                assert_eq!(astar_search_results.cost().unwrap(), dijkstra_search_results.cost());
+            }
+        }
+
+        // Assert we didn't skip all of the rooms
+        assert!(skipped_because_plains < num_rooms);
     }
 }
