@@ -25,6 +25,7 @@ all-features = true
 [dependencies]
 num = "0.4.3"
 screeps-game-api = "0.23"
+screeps-game-utils = "0.23.0"
 serde = "1.0.209"
 
 [features]
