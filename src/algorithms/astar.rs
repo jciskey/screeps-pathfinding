@@ -1869,7 +1869,7 @@ mod tests {
 
     #[test]
     fn validate_path_is_optimal_for_mmo_shard3_W49N34() {
-        let terrains_map = load_all_room_terrains_from_map("map-mmo-shard3.json");
+        let terrains_map = load_all_room_terrains_from_map("test-rooms.json");
         let room_name_str = "W49N34";
 
         let room_name = RoomName::new(room_name_str).unwrap();
@@ -1926,7 +1926,7 @@ mod tests {
 
     #[test]
     fn validate_path_is_optimal_for_mmo_shard3_W49N34_known_edge_case() {
-        let terrains_map = load_all_room_terrains_from_map("map-mmo-shard3.json");
+        let terrains_map = load_all_room_terrains_from_map("test-rooms.json");
         let room_name_str = "W49N34";
 
         let room_name = RoomName::new(room_name_str).unwrap();
@@ -1984,7 +1984,7 @@ mod tests {
     #[test]
     #[ignore]
     fn validate_path_is_optimal_for_mmo_shard3_arbitrary_rooms() {
-        let terrains_map = load_all_room_terrains_from_map("map-mmo-shard3.json");
+        let terrains_map = load_all_room_terrains_from_map("test-rooms.json");
 
         let mut skipped_because_plains = 0;
         let mut num_rooms = 0;
