@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+## [v0.1.3]
+
+Updated main Screeps crate dependency to v0.23.
+
 ## [v0.1.2]
 
 ### Added
@@ -21,5 +25,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added Dijkstra's Algorithm
-- Added A* Algorithm
+- Added A\* Algorithm
 - Added utility helper methods for heuristics and goals
