@@ -240,13 +240,13 @@ fn expand_grid_neighbors<T: AStarGridNode, G, F, O>(
     F: Fn(T) -> O,
     O: AStarCost,
 {
-    let debug_print = true;
+    // let debug_print = true;
     // if (start.x.u8() == 25) & (start.y.u8() == 10) {
     //     // Divergence node: RoomXY { x: RoomCoordinate(25), y: RoomCoordinate(10) }, 
     //     println!("Expanding neighbors for divergence node");
     //     debug_print = true;
     // }
-    println!("Expanding neighbors for: {:?}", start);
+    // println!("Expanding neighbors for: {:?}", start);
 
     for (neighbor, direction) in neighbors {
 
@@ -1002,6 +1002,7 @@ where
     move |_, p| cost_fn(p)
 }
 
+#[allow(dead_code)]
 fn optionize_cost_fn_results<G, T, O>(cost_fn: G) -> impl Fn(T, T) -> Option<O>
 where
     G: Fn(T, T) -> O,
