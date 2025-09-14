@@ -1,7 +1,7 @@
-use std::{env, path::PathBuf};
-use std::collections::HashMap;
-use screeps::{RoomName, LocalRoomTerrain};
+use screeps::{LocalRoomTerrain, RoomName};
 use screeps_utils::offline_map::load_shard_map_json;
+use std::collections::HashMap;
+use std::{env, path::PathBuf};
 
 const TEST_MAPS_DIRNAME: &str = "test_maps";
 

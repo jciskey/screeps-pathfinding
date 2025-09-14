@@ -31,11 +31,23 @@ impl<T> AStarGridNode for T where T: AStarNode + AddDirection + std::fmt::Debug 
 /// Helper trait for defining how we use generic costs in A*, allowing users to bring their own
 /// costs without being locked into e.g. u32.
 pub trait AStarCost:
-    std::ops::Add<Self, Output = Self> + CheckedAdd + Copy + Eq + Sized + std::cmp::Ord + std::fmt::Debug
+    std::ops::Add<Self, Output = Self>
+    + CheckedAdd
+    + Copy
+    + Eq
+    + Sized
+    + std::cmp::Ord
+    + std::fmt::Debug
 {
 }
 impl<T> AStarCost for T where
-    T: std::ops::Add<Self, Output = Self> + CheckedAdd + Copy + Eq + Sized + std::cmp::Ord + std::fmt::Debug
+    T: std::ops::Add<Self, Output = Self>
+        + CheckedAdd
+        + Copy
+        + Eq
+        + Sized
+        + std::cmp::Ord
+        + std::fmt::Debug
 {
 }
 
@@ -242,14 +254,13 @@ fn expand_grid_neighbors<T: AStarGridNode, G, F, O>(
 {
     // let debug_print = true;
     // if (start.x.u8() == 25) & (start.y.u8() == 10) {
-    //     // Divergence node: RoomXY { x: RoomCoordinate(25), y: RoomCoordinate(10) }, 
+    //     // Divergence node: RoomXY { x: RoomCoordinate(25), y: RoomCoordinate(10) },
     //     println!("Expanding neighbors for divergence node");
     //     debug_print = true;
     // }
     // println!("Expanding neighbors for: {:?}", start);
 
     for (neighbor, direction) in neighbors {
-
         // Do this as a match statement, with this as the branch for vacant; the occupied branch
         // needs to do g-score checking, and then if the g-score is smaller than the lowest seen,
         // add that node to the heap
@@ -276,7 +287,7 @@ fn expand_grid_neighbors<T: AStarGridNode, G, F, O>(
                                 score_entry.insert(next_g_score);
                                 v.insert(start);
                                 true
-                            },
+                            }
                             Entry::Occupied(mut score_entry) => {
                                 if next_g_score < *score_entry.get() {
                                     // We've arrived at the node via a shorter path, adjust its
@@ -290,10 +301,9 @@ fn expand_grid_neighbors<T: AStarGridNode, G, F, O>(
                                     // the frontier
                                     false
                                 }
-                            },
+                            }
                         }
-
-                    },
+                    }
                     Entry::Vacant(v) => {
                         // We've never seen this node before, add it to the frontier
                         lowest_seen_g_scores.insert(*neighbor, next_g_score);
@@ -409,7 +419,7 @@ where
 
     // This is a tree of parent pointers, used to reconstruct the final path
     let mut parents: HashMap<T, T> = HashMap::new();
-    
+
     // This is the open set, the frontier of nodes we have yet to explore in our search
     let mut heap = BinaryHeap::new();
 
@@ -464,7 +474,7 @@ where
             Entry::Vacant(_) => {
                 // This should never happen, but for safety and sanity, expand the node
                 false
-            },
+            }
             Entry::Occupied(score_entry) => {
                 if g_score > *score_entry.get() {
                     // If the g-score for this node is higher than the lowest that we've seen, then
@@ -473,7 +483,7 @@ where
                 } else {
                     false
                 }
-            },
+            }
         };
 
         if should_skip_node {
@@ -1015,8 +1025,8 @@ mod tests {
     use super::*;
 
     use crate::utils::heuristics::heuristic_get_range_to;
-    use screeps::local::{Position, RoomCoordinate, RoomXY, RoomName};
     use screeps::constants::Terrain;
+    use screeps::local::{Position, RoomCoordinate, RoomName, RoomXY};
 
     use crate::common::data::load_all_room_terrains_from_map;
 
@@ -1871,7 +1881,11 @@ mod tests {
 
         let plain_cost = 1;
         let swamp_cost = 5;
-        let costs = crate::utils::movement_costs::get_movement_cost_lcm_from_terrain(&terrain_data, plain_cost, swamp_cost);
+        let costs = crate::utils::movement_costs::get_movement_cost_lcm_from_terrain(
+            &terrain_data,
+            plain_cost,
+            swamp_cost,
+        );
         let costs_fn = crate::utils::movement_costs::movement_costs_from_lcm(&costs);
         let neighbors_fn = crate::utils::neighbors::room_xy_neighbors;
         let max_ops = 2000;
@@ -1904,7 +1918,10 @@ mod tests {
         assert_eq!(astar_search_results.incomplete(), false);
         let astar_path = astar_search_results.path();
 
-        assert_eq!(astar_search_results.cost().unwrap(), dijkstra_search_results.cost());
+        assert_eq!(
+            astar_search_results.cost().unwrap(),
+            dijkstra_search_results.cost()
+        );
     }
 
     #[test]
@@ -1921,7 +1938,11 @@ mod tests {
 
         let plain_cost = 1;
         let swamp_cost = 5;
-        let costs = crate::utils::movement_costs::get_movement_cost_lcm_from_terrain(&terrain_data, plain_cost, swamp_cost);
+        let costs = crate::utils::movement_costs::get_movement_cost_lcm_from_terrain(
+            &terrain_data,
+            plain_cost,
+            swamp_cost,
+        );
         let costs_fn = crate::utils::movement_costs::movement_costs_from_lcm(&costs);
         let neighbors_fn = crate::utils::neighbors::room_xy_neighbors;
         let max_ops = 2000;
@@ -1954,7 +1975,10 @@ mod tests {
         assert_eq!(astar_search_results.incomplete(), false);
         let astar_path = astar_search_results.path();
 
-        assert_eq!(astar_search_results.cost().unwrap(), dijkstra_search_results.cost());
+        assert_eq!(
+            astar_search_results.cost().unwrap(),
+            dijkstra_search_results.cost()
+        );
     }
 
     #[test]
@@ -1966,18 +1990,17 @@ mod tests {
         let mut num_rooms = 0;
         let room_name_str = "W49N34";
         let room_name = RoomName::new(room_name_str).unwrap();
-        let tmp = vec!(terrains_map.get(&room_name).unwrap());
+        let tmp = vec![terrains_map.get(&room_name).unwrap()];
         for terrain_data in tmp {
-        //for terrain_data in terrains_map.values() {
+            //for terrain_data in terrains_map.values() {
             num_rooms += 1;
 
-            let plains_tiles: Vec<RoomXY> = (0..50).cartesian_product(0..50)
-                .map(|(y, x)| unsafe { RoomXY::unchecked_new(x, y) } )
-                .filter(|pos| {
-                    match terrain_data.get_xy(*pos) {
-                        Terrain::Plain => true,
-                        _ => false,
-                    }
+            let plains_tiles: Vec<RoomXY> = (0..50)
+                .cartesian_product(0..50)
+                .map(|(y, x)| unsafe { RoomXY::unchecked_new(x, y) })
+                .filter(|pos| match terrain_data.get_xy(*pos) {
+                    Terrain::Plain => true,
+                    _ => false,
                 })
                 .collect();
 
@@ -2002,7 +2025,11 @@ mod tests {
 
                 let plain_cost = 1;
                 let swamp_cost = 5;
-                let costs = crate::utils::movement_costs::get_movement_cost_lcm_from_terrain(&terrain_data, plain_cost, swamp_cost);
+                let costs = crate::utils::movement_costs::get_movement_cost_lcm_from_terrain(
+                    &terrain_data,
+                    plain_cost,
+                    swamp_cost,
+                );
                 let costs_fn = crate::utils::movement_costs::movement_costs_from_lcm(&costs);
                 let neighbors_fn = crate::utils::neighbors::room_xy_neighbors;
                 let max_ops = 2000;
@@ -2038,7 +2065,10 @@ mod tests {
                 let astar_path = astar_search_results.path();
 
                 //assert_eq!(astar_path.len(), dijkstra_path.len(), "Dijkstra: {:?}\nA*: {:?}", dijkstra_path, astar_path);
-                assert_eq!(astar_search_results.cost().unwrap(), dijkstra_search_results.cost());
+                assert_eq!(
+                    astar_search_results.cost().unwrap(),
+                    dijkstra_search_results.cost()
+                );
             }
         }
 
