@@ -1,7 +1,8 @@
 # Screeps Pathfinding
 
-![Crates.io Version](https://img.shields.io/crates/v/screeps-pathfinding)
-![Crates.io License](https://img.shields.io/crates/l/screeps-pathfinding)
+[![Crates.io Version](https://img.shields.io/crates/v/screeps-pathfinding)](https://crates.io/crates/screeps-pathfinding)
+[![Crates.io License](https://img.shields.io/crates/l/screeps-pathfinding)](https://opensource.org/license/mit)
+[![docs.rs version badge][docsrs-badge]][docs]
 
 Pathfinding algorithms in native Rust for the programmable MMO Screeps: World.
 
