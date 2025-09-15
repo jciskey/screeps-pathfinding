@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Split A\* implementation into two different functions, to allow for different optimizations.
+- Added better traits for A\* to allow users to bring their own types instead of being locked into u32 as their costs.
+- Bugfix for A\* edge case where it didn't calculate the actual shortest path when using an aggressive heuristic sorting.
+
 ## [v0.1.3]
 
 Updated main Screeps crate dependency to v0.23.
