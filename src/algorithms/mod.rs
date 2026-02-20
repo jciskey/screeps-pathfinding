@@ -7,3 +7,6 @@ pub mod astar;
 
 /// Provides methods for pathfinding using Dijkstra's Shortest Paths algorithm
 pub mod dijkstra;
+
+/// Provides methods for pathfinding at the map level.
+pub mod map_routing;
